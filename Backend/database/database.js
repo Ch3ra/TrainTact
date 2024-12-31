@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs'); // Import bcrypt for hashing
 const User = require('../model/userModel');
 
 exports.connectDatabase = async () => {
@@ -7,14 +8,17 @@ exports.connectDatabase = async () => {
     await mongoose.connect(process.env.Mongo_URI);
     console.log("Database is connected!");
 
-    // Check if the admin user already exists
+    
     const isAdminExist = await User.findOne({ email: "admin@gmail.com" });
     if (!isAdminExist) {
-      // Create the admin user if not found
+      
+      const hashedPassword = bcrypt.hashSync("12345678", 10); 
+
+      
       await User.create({
-        email: "admin@gmail.com",
-        userName: "Ch3Ray", 
-        password: "12345678",  // Consider hashing the password
+        email: "admin@gmail.com", 
+        userName: "Ch3Ray",
+        password: hashedPassword, 
         role: "Admin",
       });
 

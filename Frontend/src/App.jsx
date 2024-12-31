@@ -10,6 +10,8 @@ import TrainerDash from "./pages/TrainerDash";
 import AdminNavbar from "./AdminPages/AdminNavbar";
 import AdminDashboard from "./AdminPages/AdminDashboard";
 import TrainerRequest from "./AdminPages/TrainerRequest";
+import EmailInput from "./form/ForgotPassword/EmailInput";
+import ResetPassword from "./form/ForgotPassword/ResetPassword";
 
 function App() {
   return (
@@ -31,7 +33,9 @@ function App() {
 
           <Route path="/clientDash" element={<ClientDash/>} />
           <Route path="/trainerDash" element={<TrainerDash />} />
-
+        {/* ForgotPassword */}
+        <Route path="/emailInput" element={<EmailInput/>} />
+        <Route path="/enterNewPassword" element={<ResetPassword/>} />
 
          
 

@@ -4,8 +4,13 @@ const userSchema = new mongoose.Schema({
   userName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ["Trainer", "Client"], default: "Client" },
-  profilePicture: { type: String }, 
+  role: { type: String, enum: ["Trainer", "Client", "Admin"], default: "Client" }, 
+  profilePicture: { type: String },
+  isOtpVerified: { type: Boolean, default: false }, 
+  otp: {
+    type: String,
+    required: false,
+  },
 });
 
 module.exports = mongoose.model("User", userSchema);

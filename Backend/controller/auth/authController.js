@@ -88,7 +88,7 @@ exports.registerTrainer = async (req, res) => {
         email,
         password: hashedPassword,
         role: "Trainer",
-        profilePicture, 
+        profilePicture,
       });
   
       await Trainer.create({
@@ -97,6 +97,29 @@ exports.registerTrainer = async (req, res) => {
         resume,
       });
   
+      // Send email notification
+      try {
+        await sendEmail({
+          email: email,
+          subject: "Your Registration is Under Review",
+          message: `Dear ${username},
+  
+  Thank you for registering with us as a trainer. Your application is currently under review by our Admin team.
+  
+  You will receive an email notification once the review process is completed, indicating whether your registration has been accepted or declined.
+  
+  If you have any questions in the meantime, feel free to reach out to us.
+  
+  Best regards,
+  Your App Name Team
+  `,
+        });
+        console.log("Email sent successfully!");
+      } catch (emailError) {
+        console.error("Error sending email:", emailError.message);
+      }
+  
+      // Continue existing logic
       res.status(201).json({ message: "Trainer registered successfully." });
     } catch (error) {
       res.status(500).json({
@@ -105,7 +128,7 @@ exports.registerTrainer = async (req, res) => {
       });
     }
   };
-
+  
 
 // Login User
 exports.loginUser = async (req, res) => {
@@ -121,8 +144,8 @@ exports.loginUser = async (req, res) => {
             return res.status(404).json({ message: "No user found with this email." });
         }
 
-
-        if (user.role === "Client" && !user.isOtpVerified) {
+        // Deny access to any panel if OTP is not verified
+        if (!user.isOtpVerified) {
             return res.status(403).json({ message: "Please verify your email before logging in." });
         }
 
@@ -131,14 +154,36 @@ exports.loginUser = async (req, res) => {
             return res.status(401).json({ message: "Invalid password." });
         }
 
-    
-        const token = jwt.sign({ id: user._id, role: user.role }, process.env.SECRET_KEY, { expiresIn: "30d" });
+        // Generate JWT token
+        const token = jwt.sign(
+            { id: user._id, role: user.role },
+            process.env.SECRET_KEY,
+            { expiresIn: "30d" }
+        );
+     
+        // Redirect based on role
+        let redirectUrl;
+        if (user.role === "Admin") {
+            redirectUrl = "/adminDash";
+        } else if (user.role === "Trainer") {
+            redirectUrl = "/trainerDash";
+        } else if (user.role === "Client") {
+            redirectUrl = "/clientDash";
+        } else {
+            return res.status(400).json({ message: "Invalid user role." });
+        }
 
-        res.status(200).json({ message: "Logged in successfully.", token });
+        res.status(200).json({
+            message: "Logged in successfully.",
+            token,
+            role: user.role,
+            redirectUrl, 
+        });
     } catch (error) {
         res.status(500).json({ message: "Error logging in.", error: error.message });
     }
 };
+
 
 
 // Forgot Password (Request OTP)
@@ -185,98 +230,112 @@ exports.verifyOtp = async (req, res) => {
             return res.status(404).json({ message: "No user found with this email." });
         }
 
-        if (user.otp !== otp) {
+        // Check if OTP exists in the database
+        if (!user.otp) {
+            return res.status(400).json({ message: "OTP not generated or expired. Please request a new OTP." });
+        }
+
+        // Compare OTPs as strings
+        if (user.otp !== otp.toString()) {
             return res.status(400).json({ message: "Invalid OTP. Please try again." });
         }
 
-       
+        // Mark OTP as verified and clear it
         user.isOtpVerified = true;
-        user.otp = null;
+        user.otp = null; // Clear the OTP after successful verification
         await user.save();
-      
 
-      
+        // Determine the redirect URL based on the user's role
+        let redirectUrl;
+        if (user.role === "Admin") {
+            redirectUrl = "/adminDash";
+        } else if (user.role === "Trainer") {
+            redirectUrl = "/trainerDash";
+        } else if (user.role === "Client") {
+            redirectUrl = "/clientDash";
+        } else {
+            return res.status(400).json({ message: "Invalid user role." });
+        }
+
         const token = jwt.sign(
             { id: user._id, role: user.role },
             process.env.SECRET_KEY,
             { expiresIn: "30d" }
-
         );
 
         res.status(200).json({
-            message: "OTP verified successfully. You can now log in.",
-            token, 
+            message: "OTP verified successfully.",
+            token,
+            redirectUrl, // Include redirect URL in the response
         });
     } catch (error) {
         res.status(500).json({ message: "Error verifying OTP.", error: error.message });
     }
 };
 
+
 // Reset Password
 exports.resetPassword = async (req, res) => {
-    const { email, newPassword, confirmPassword, otp } = req.body;
+    const { email, newPassword } = req.body; // Accept only email and newPassword
 
     try {
-        if (!email || !newPassword || !confirmPassword || !otp) {
-            return res.status(400).json({ message: "Please provide all required fields." });
+        // Check if required fields are provided
+        if (!email || !newPassword) {
+            return res.status(400).json({ message: "Please provide both email and newPassword." });
         }
 
-        if (newPassword !== confirmPassword) {
-            return res.status(400).json({ message: "Passwords do not match." });
-        }
-
+        // Find the user by email
         const user = await User.findOne({ email });
         if (!user) {
             return res.status(404).json({ message: "No user found with this email." });
         }
 
-        if (user.otp !== otp) {
-            return res.status(400).json({ message: "Invalid OTP. Please try again." });
-        }
-
-        user.password = bcrypt.hashSync(newPassword, 10);
-        user.otp = null; 
-        user.isOtpVerified = false; 
+        // Reset the password
+        user.password = bcrypt.hashSync(newPassword, 10); // Securely hash the new password
+        user.otp = null; // Clear any residual OTPs
         await user.save();
 
         res.status(200).json({ message: "Password reset successfully." });
     } catch (error) {
+        console.error("Error resetting password:", error);
         res.status(500).json({ message: "Error resetting password.", error: error.message });
     }
 };
 
-// Resend OTP
-exports.resendOtp = async (req, res) => {
-    const { email } = req.body;
 
-    try {
-        if (!email) {
-            return res.status(400).json({ message: "Please provide an email address." });
+
+    // Resend OTP
+    exports.resendOtp = async (req, res) => {
+        const { email } = req.body;
+
+        try {
+            if (!email) {
+                return res.status(400).json({ message: "Please provide an email address." });
+            }
+
+            const user = await User.findOne({ email });
+            if (!user) {
+                return res.status(404).json({ message: "No user found with this email." });
+            }
+
+            if (user.isOtpVerified) {
+                return res.status(400).json({ message: "This email is already verified." });
+            }
+
+        
+            const otp = generateOtp();
+            user.otp = otp;
+            await user.save();
+
+        
+            await sendEmail({
+                email: user.email,
+                subject: "Resend OTP for Verification",
+                message: `Your OTP for verification is: ${otp}`,
+            });
+
+            res.status(200).json({ message: "OTP has been resent to your email." });
+        } catch (error) {
+            res.status(500).json({ message: "Error resending OTP.", error: error.message });
         }
-
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: "No user found with this email." });
-        }
-
-        if (user.isOtpVerified) {
-            return res.status(400).json({ message: "This email is already verified." });
-        }
-
-       
-        const otp = generateOtp();
-        user.otp = otp;
-        await user.save();
-
-      
-        await sendEmail({
-            email: user.email,
-            subject: "Resend OTP for Verification",
-            message: `Your OTP for verification is: ${otp}`,
-        });
-
-        res.status(200).json({ message: "OTP has been resent to your email." });
-    } catch (error) {
-        res.status(500).json({ message: "Error resending OTP.", error: error.message });
-    }
-};
+    };

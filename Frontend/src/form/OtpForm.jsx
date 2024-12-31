@@ -6,11 +6,11 @@ const OtpForm = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false); 
+  const [resending, setResending] = useState(false);
   const inputsRef = useRef([]);
   const navigate = useNavigate();
   const location = useLocation();
-  const email = location.state?.email; 
+  const { email, action } = location.state || {}; // Retrieve email and action from state
 
   const BASE_API_URL = "http://localhost:3000/api/auth";
 
@@ -32,24 +32,34 @@ const OtpForm = () => {
     setErrorMessage("");
     setSuccessMessage("");
     setLoading(true);
-
-    const otp = inputsRef.current.map((input) => input.value).join("");
+  
+    const otp = inputsRef.current.map((input) => input.value).join(""); // Collect OTP
     if (otp.length !== 4) {
       setErrorMessage("Please enter a valid 4-digit OTP.");
       setLoading(false);
       return;
     }
-
+  
     try {
       if (!email) {
         throw new Error("Email is required to verify OTP.");
       }
-
+  
       const response = await axios.post(`${BASE_API_URL}/verifyOtp`, { otp, email });
-
+  
       if (response.data?.message) {
         setSuccessMessage(response.data.message);
-        setTimeout(() => navigate("/login"), 2000);
+  
+        // Redirect to ResetPassword with email and otp
+        if (action === "forgotPassword") {
+          setTimeout(() => navigate("/enterNewPassword", { state: { email, otp } }), 2000);
+        } else if (response.data.redirectUrl) {
+          // For registration, navigate to role-based dashboard
+          setTimeout(() => navigate(response.data.redirectUrl), 2000);
+        } else {
+          // Default fallback
+          setTimeout(() => navigate("/authentication"), 2000);
+        }
       }
     } catch (error) {
       const serverMessage = error.response?.data?.message;
@@ -60,7 +70,7 @@ const OtpForm = () => {
       setLoading(false);
     }
   };
-
+  
   const handleResendOtp = async () => {
     setErrorMessage("");
     setSuccessMessage("");
@@ -93,9 +103,9 @@ const OtpForm = () => {
           <div className="flex justify-center">
             <div className="max-w-md mx-auto text-center bg-white px-4 sm:px-8 py-10 rounded-xl shadow">
               <header className="mb-8">
-                <h1 className="text-2xl font-bold mb-1">Mobile Phone Verification</h1>
+                <h1 className="text-2xl font-bold mb-1">Email Verification</h1>
                 <p className="text-[15px] text-slate-500">
-                  Enter the 4-digit verification code that was sent to your email address.
+                  Enter the 4-digit verification code sent to your email address.
                 </p>
               </header>
               <form onSubmit={handleSubmit}>
@@ -125,7 +135,7 @@ const OtpForm = () => {
                     className="w-full inline-flex justify-center whitespace-nowrap rounded-lg bg-indigo-500 px-3.5 py-2.5 text-sm font-medium text-white shadow-sm shadow-indigo-950/10 hover:bg-indigo-600 focus:outline-none focus:ring focus:ring-indigo-300 transition-colors duration-150"
                     disabled={loading}
                   >
-                    {loading ? "Verifying..." : "Verify Account"}
+                    {loading ? "Verifying..." : "Verify OTP"}
                   </button>
                 </div>
               </form>

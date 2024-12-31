@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware and route imports
 const authRoutes = require("./routes/authRoute");
+const trainerRoutes=require("./routes/trainerRoute")
 
 // Ensure upload folders exist
 const paths = ["./uploads/profilePictures", "./uploads/resumes"];
@@ -36,6 +37,7 @@ app.get("/", (req, res) => {
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/trainer", trainerRoutes);
 
 // Database connection
 const { connectDatabase } = require("./database/database");
