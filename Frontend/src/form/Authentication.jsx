@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import "./Authentication.css";
 import { Link, useNavigate } from "react-router-dom";
+import { GoogleLogin } from '@react-oauth/google';
+import {jwtDecode} from 'jwt-decode';
 import axios from "axios";
 
 const Authentication = () => {
@@ -124,6 +126,47 @@ const Authentication = () => {
     }
   };
 
+  const handleGoogleSuccess = async (response) => {
+    if (response.credential) {
+      const decodedData = jwtDecode(response.credential);
+      console.log("Decoded JWT:", decodedData); // Assuming jwtDecode correctly decodes the ID token from Google
+  
+      try {
+        const postData = {
+          email: decodedData.email,
+          name: decodedData.name // Assuming these fields are present in the decoded data
+        };
+  
+        const axiosResponse = await axios.post("http://localhost:3000/api/auth/googleLogin", postData, {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+  console.log(axiosResponse)
+        if (axiosResponse.data && axiosResponse.data.token) {
+          console.log("Token from server:", axiosResponse.data.token);
+          localStorage.setItem("token", axiosResponse.data.token);
+          navigate('/clientDash');
+
+         
+        } else {
+          console.error("No token received, check backend logic.");
+        }
+      } catch (error) {
+        console.error("Failed to login with Google:", error);
+     
+      }
+    } else {
+      console.log("No credentials received.");
+    }
+  }
+  
+
+const handleGoogleFailure = ()=>
+{
+  console.log("Google lOGIN failed")
+}
+
   return (
     <div className="main-container">
       <div className={`container ${isActive ? "active" : ""}`}>
@@ -237,6 +280,7 @@ const Authentication = () => {
             >
               Register
             </button>
+           
           </div>
           <div className="toggle-panel toggle-right">
             <h1 className="text-2xl font-bold">Welcome Back!</h1>
@@ -248,8 +292,28 @@ const Authentication = () => {
               Login
             </button>
           </div>
+         
         </div>
       </div>
+
+      <div className="flex flex-col relative justify-center items-center mt-6">
+                  <div className="flex gap-2 absolute top-1 z-100 border w-60 px-2 rounded-md">
+                    <img
+                      src="https://static.vecteezy.com/system/resources/previews/013/948/549/non_2x/google-logo-on-transparent-white-background-free-vector.jpg"
+                      className="w-10"
+                      alt="Google Logo"
+                    />
+                    <button className="text-sky-600 mx-2">Sign in with Google</button>
+                  </div>
+                  <div className="z-0 opacity-0">
+                    <GoogleLogin
+                     onSuccess= {handleGoogleSuccess}
+                     onError= {handleGoogleFailure}
+                      useOneTap
+                    />
+                  </div>
+                </div>
+     
     </div>
   );
 };

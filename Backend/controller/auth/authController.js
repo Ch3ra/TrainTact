@@ -339,3 +339,59 @@ exports.resetPassword = async (req, res) => {
             res.status(500).json({ message: "Error resending OTP.", error: error.message });
         }
     };
+
+    exports.googleLogin = async (req, res) => {
+        try {
+            console.log(req.body);
+            const { name: userName, email } = req.body;
+    
+            const existingUser = await User.findOne({ email });
+    console.log("existing yser", existingUser);
+            if (!existingUser) {
+                const newUser = await User.create({
+                    userName,
+                    email,
+                    role: "Client",
+                    isOtpVerified: true,
+                    otp: true // You might want to generate or handle OTP verification differently
+                });
+    
+                const token = jwt.sign(
+                    { id: newUser._id, role: newUser.role },
+                    process.env.SECRET_KEY,
+                    { expiresIn: "30d" }
+                );
+    
+              console.log("new user", newUser);
+                
+                res.status(200).json({
+                    message: "Logged in successfully.",
+                    token,
+                    role: newUser.role,
+                   
+                });
+            } else {
+              
+                const token = jwt.sign(
+                    { id: existingUser._id, role: existingUser.role },
+                    process.env.SECRET_KEY,
+                    { expiresIn: "30d" }
+                );
+    
+              
+    
+                res.status(200).json({
+                    message: "User already exists. Logging in.",
+                    token,
+                    role: existingUser.role,
+                  
+                });
+            }
+        } catch (error) {
+            console.error("Login error:", error);
+            res.status(500).json({
+                message: "Failed to login due to server error."
+            });
+        }
+    };
+    

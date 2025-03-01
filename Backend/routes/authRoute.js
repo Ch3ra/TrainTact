@@ -6,6 +6,7 @@ const {
     verifyOtp,
     resetPassword,
     resendOtp,
+    googleLogin
 } = require("../controller/auth/authController");
 
 const router = require("express").Router();
@@ -30,5 +31,5 @@ router.post("/forgotPassword", forgotPassword);
 router.post("/verifyOtp", verifyOtp);
 router.post("/resetPassword", resetPassword);
 router.post("/resendOtp", resendOtp);
-
+router.post("/googleLogin",googleLogin)
 module.exports = router;

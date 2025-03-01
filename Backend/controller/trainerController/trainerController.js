@@ -4,7 +4,7 @@ const User = require("../../model/userModel");
 const mongoose = require("mongoose");
 const sendEmail = require("../../services/sendEmail");
 
-// Get all trainers
+// Get all trainers (only pending trainers, i.e. isOtpVerified is false)
 const getAllTrainers = async (req, res) => {
   try {
     const BASE_URL = `${process.env.BASE_URL || "http://localhost:3000"}/uploads/profilePictures/`;
@@ -12,22 +12,25 @@ const getAllTrainers = async (req, res) => {
     // Fetch all trainers and populate the 'user' field
     const trainers = await Trainer.find().populate("user");
 
-    // Map through trainers to prepare data with absolute URLs for profile pictures
-    const trainersData = trainers
-      .filter((trainer) => trainer && trainer.user)
-      .map((trainer) => ({
-        ...trainer._doc,
-        user: {
-          ...trainer.user._doc,
-          profilePicture: trainer.user.profilePicture
-            ? `${BASE_URL}${trainer.user.profilePicture}`
-            : `${BASE_URL}default.png`, // Fallback to default image if profile picture is not available
-        },
-      }));
+    // Filter trainers where a user exists and OTP has not been verified
+    const filteredTrainers = trainers.filter(
+      (trainer) => trainer && trainer.user && !trainer.user.isOtpVerified
+    );
+
+    // Map through the filtered trainers to prepare data with absolute URLs for profile pictures
+    const trainersData = filteredTrainers.map((trainer) => ({
+      ...trainer._doc,
+      user: {
+        ...trainer.user._doc,
+        profilePicture: trainer.user.profilePicture
+          ? `${BASE_URL}${trainer.user.profilePicture}`
+          : `${BASE_URL}default.png`, // Fallback to default image if profile picture is not available
+      },
+    }));
 
     res.status(200).json({
       success: true,
-      message: "Fetched all trainers successfully",
+      message: "Fetched all pending trainers successfully",
       data: trainersData,
     });
   } catch (error) {
@@ -98,7 +101,6 @@ Traintact Team`,
   }
 };
 
-// Update OTP verification status
 // Update OTP verification status
 const updateOtpVerification = async (req, res) => {
   try {

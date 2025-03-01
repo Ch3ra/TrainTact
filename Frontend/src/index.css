@@ -2,3 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+    font-family: 'CustomFont';
+    src: url('/path-to-your-font.woff2') format('woff2');
+  }
+  
+  .font-custom {
+    font-family: 'CustomFont', sans-serif;
+  }

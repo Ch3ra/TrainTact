@@ -3,12 +3,17 @@ const path = require("path");
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Dynamically set the folder based on the file field name
-    const uploadFolder =
-    file.fieldname === "profilePicture"
-      ? "./uploads/profilePictures"
-      : "./uploads/resumes";
-    cb(null, uploadFolder); // Ensure these folders exist
+    let uploadFolder = "./uploads"; // Default folder if none matches
+
+    if (file.fieldname === "profilePicture") {
+      uploadFolder = "./uploads/profilePictures";
+    } else if (file.fieldname === "resume") {
+      uploadFolder = "./uploads/resumes";
+    } else if (file.fieldname === "coverPhoto") {
+      uploadFolder = "./uploads/coverPhoto"; // Handling uploads to the coverPhoto folder
+    }
+
+    cb(null, uploadFolder); // Set the destination folder
   },
   filename: function (req, file, cb) {
     // Use a unique filename with a timestamp to prevent conflicts
