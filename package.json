@@ -1,5 +1,15 @@
 {
   "dependencies": {
     "@mui/icons-material": "^6.4.1"
-  }
+  },
+  "name": "final-year-project",
+  "description": "��#\u0000 \u0000T\u0000r\u0000a\u0000i\u0000n\u0000T\u0000a\u0000c\u0000t\u0000\r\u0000 \u0000",
+  "version": "1.0.0",
+  "main": "index.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
 }

@@ -165,4 +165,248 @@ Traintact Team`,
   }
 };
 
-module.exports = { getAllTrainers, deleteTrainer, updateOtpVerification };
+
+
+const getTrainerDetails = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Fetch trainer information including linked user details
+    const trainer = await Trainer.findOne({ user: userId })
+      .populate({
+        path: 'user',
+        select: '-password' // Exclude the password field
+      });
+
+    if (!trainer) {
+      return res.status(404).json({ message: "Trainer not found" });
+    }
+
+    // Construct a detailed response object
+    const response = {
+      message: "Trainer profile fetched successfully.",
+      trainer: {
+        
+        userName: trainer.user.userName,
+        email: trainer.user.email,
+        
+        profilePicture: trainer.user.profilePicture,
+        fitnessGoal: trainer.user.fitnessGoal,
+        location: trainer.user.location,
+        yearsOfExperience: trainer.yearsOfExperience,
+        price: trainer.price,
+        availabilityHours: trainer.availabilityHours,
+        description: trainer.description,
+        startDay: trainer.startDay,
+        endDay: trainer.endDay,
+        coverPhoto: trainer.coverPhoto,
+        advancedNeeded: trainer.advancedNeeded 
+      }
+    };
+
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Error fetching trainer information:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
+
+const createOrUpdateTrainer = async (req, res) => {
+  const { userId } = req.params;
+  const {
+      price, availabilityHours, description,
+      fitnessGoal, location, startDay, endDay,
+      advancedNeeded
+  } = req.body;
+
+
+  const coverPhoto = req.file ? req.file.filename : null;
+
+  try {
+      const user = await User.findById(userId);
+      if (!user || user.role !== "Trainer") {
+          return res.status(404).json({ message: "Trainer not found or user is not a trainer." });
+      }
+
+      let trainer = await Trainer.findOne({ user: userId });
+      if (trainer) {
+          trainer.price = price;
+          trainer.availabilityHours = availabilityHours;
+          trainer.description = description;
+          trainer.startDay = startDay;
+          trainer.endDay = endDay;
+          trainer.advancedNeeded = advancedNeeded === 'true' || advancedNeeded === true;
+          if (coverPhoto) trainer.coverPhoto = coverPhoto;
+          await trainer.save();
+      } else {
+          trainer = await Trainer.create({
+              user: userId,
+              price,
+              availabilityHours,
+              description,
+              startDay,
+              endDay,
+              coverPhoto,
+              advancedNeeded: advancedNeeded === 'true' || advancedNeeded === true
+          });
+      }
+
+      user.fitnessGoal = fitnessGoal;
+      user.location = location;
+      await user.save();
+
+      res.status(200).json({
+          message: "Trainer profile updated successfully",
+          trainer,
+          user
+      });
+  } catch (error) {
+      console.error("Error updating trainer profile:", error);
+      res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
+
+
+
+//yo banauna baki yesko multer ko jot xa haii!!
+const updateTrainerDetails = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const {
+      userName,
+      email,
+      fitnessGoal,
+      location,
+      yearsOfExperience,
+      price,
+      availabilityTime,
+      description,
+      availableDays,
+      advancedNeeded
+    } = req.body;
+
+    // Log incoming data for debugging
+    console.log("Body:", req.body);
+    console.log("Files:", req.files);
+
+    // Handle file uploads
+    const coverPhoto = req.files?.coverPhoto?.[0]?.filename;
+    const profilePicture = req.files?.profilePicture?.[0]?.filename;
+
+    // Find user and validate
+    const user = await User.findById(userId);
+    if (!user || user.role !== "Trainer") {
+      return res.status(404).json({ message: "Trainer not found." });
+    }
+
+    // Update user fields only if provided
+    if (userName !== undefined) user.userName = userName;
+    if (email !== undefined) user.email = email;
+    if (fitnessGoal !== undefined) user.fitnessGoal = fitnessGoal;
+    if (location !== undefined) user.location = location;
+    if (profilePicture !== undefined) user.profilePicture = profilePicture;
+    await user.save();
+
+    // Update or create trainer profile
+    let trainer = await Trainer.findOne({ user: userId });
+    if (!trainer) trainer = new Trainer({ user: userId });
+
+    // Update trainer fields only if provided
+    if (yearsOfExperience !== undefined) trainer.yearsOfExperience = yearsOfExperience;
+    if (price !== undefined) trainer.price = price;
+    if (availabilityTime !== undefined) trainer.availabilityTime = availabilityTime;
+    if (description !== undefined) trainer.description = description;
+    if (availableDays !== undefined) trainer.availableDays = availableDays;
+    if (coverPhoto !== undefined) trainer.coverPhoto = coverPhoto;
+    
+    // Handle boolean conversion safely
+    if (advancedNeeded !== undefined) {
+      trainer.advancedNeeded = String(advancedNeeded).toLowerCase() === 'true';
+    }
+
+    await trainer.save();
+
+    res.status(200).json({
+      message: "Profile updated successfully",
+      profile: {
+        ...user.toObject(),
+        ...trainer.toObject()
+      }
+    });
+
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ 
+      message: "Server error during update",
+      error: error.message
+    });
+  }
+};
+
+
+
+//client Dash Trainer Showing
+const getCompleteProfiles =async (req, res) => {
+  try {
+    const BASE_URL = `${process.env.BASE_URL || "http://localhost:3000"}/uploads/profilePictures/`;
+    console.log("BASE_URL:", BASE_URL);
+
+    // Fetch all trainers
+    const trainers = await Trainer.find({}).populate({
+      path: 'user',
+      select: 'userName profilePicture fitnessGoal'
+    });
+
+    console.log("Raw Trainer Data:", trainers);
+
+    // Filter trainers to include only those with a defined, non-empty fitnessGoal
+    const completeTrainers = trainers.filter(trainer => 
+      trainer.user &&
+      trainer.user.fitnessGoal &&
+      trainer.user.fitnessGoal.trim() !== ''
+    );
+
+    if (!completeTrainers.length) {
+      console.log("No trainers with complete profiles found.");
+      return res.status(404).json({ message: "No trainers with complete profiles found." });
+    }
+
+    const trainersData = completeTrainers.map(trainer => ({
+      
+      ID : trainer.user && trainer.user.id,
+      username: trainer.user ? trainer.user.userName : 'No username',
+      fitnessGoal: trainer.user ? trainer.user.fitnessGoal : 'No fitnessGoal',
+      profilePicture: trainer.user && trainer.user.profilePicture
+        ? (trainer.user.profilePicture.startsWith('http') 
+            ? trainer.user.profilePicture 
+            : BASE_URL + trainer.user.profilePicture)
+        : BASE_URL + 'default.png',
+    }));
+
+    console.log("Fetched Trainers Data:", trainersData);
+    res.status(200).json({
+      success: true,
+      message: "Fetched trainers with complete profiles successfully",
+      data: trainersData,
+    });
+  } catch (error) {
+    console.error("Error fetching trainers:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch trainers",
+      error: error.message,
+    });
+  }
+};
+
+
+module.exports = { 
+  getAllTrainers, 
+  deleteTrainer, 
+  updateOtpVerification,
+  getTrainerDetails,
+  createOrUpdateTrainer,
+  updateTrainerDetails,
+  getCompleteProfiles
+};
+

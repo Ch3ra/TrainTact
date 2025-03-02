@@ -12,11 +12,11 @@ const TrainerProfileEdit = () => {
     location: '',
     yearsOfExperience: 0,
     price: 0,
-    availabilityHours: '',
+    availabilityTime: '',
     description: '',
     startDay: '',
     endDay: '',
-    advancedNeeded:"",
+    advancedNeeded: false,
     coverPhoto: null
   });
 
@@ -33,7 +33,10 @@ const TrainerProfileEdit = () => {
       const response = await fetch(`http://localhost:3000/api/trainer/details/${userId}`);
       const data = await response.json();
       if (response.ok) {
-        setTrainerData(data.trainer);
+        setTrainerData({
+          ...data.trainer,
+          advancedNeeded: data.trainer.advancedNeeded || false
+        });
       } else {
         throw new Error(data.message);
       }
@@ -43,41 +46,46 @@ const TrainerProfileEdit = () => {
   };
 
   const handleBack = () => {
-    console.log('Go back triggered');
+    window.history.back();
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    console.log('Form Submitted', trainerData);
-
     const formData = new FormData();
-    Object.entries(trainerData).forEach(([key, value]) => {
-      if (value !== null && key !== 'profilePicture' && key !== 'coverPhoto') {
+    const { startDay, endDay, ...restData } = trainerData;
+
+    // Append all fields except files
+    Object.entries(restData).forEach(([key, value]) => {
+      if (value !== null) {
         formData.append(key, value);
       }
     });
 
-    if (trainerData.profilePicture) {
-      formData.append('profilePicture', trainerData.profilePicture);
+    // Handle combined days
+    if (startDay && endDay) {
+      formData.append('availableDays', `${startDay}-${endDay}`);
     }
 
-    if (trainerData.coverPhoto) {
+    // Append files
+    if (trainerData.profilePicture instanceof File) {
+      formData.append('profilePicture', trainerData.profilePicture);
+    }
+    if (trainerData.coverPhoto instanceof File) {
       formData.append('coverPhoto', trainerData.coverPhoto);
     }
 
     try {
       const userId = JSON.parse(atob(localStorage.getItem('token').split('.')[1])).id;
-      const response = await fetch(`http://localhost:3000/api/trainer/${userId}`, {
+      const response = await fetch(`http://localhost:3000/api/trainer/trainer/${userId}`, {
         method: 'PATCH',
         body: formData,
-        headers: {
+        headers: {  
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
       });
 
       const result = await response.json();
       if (response.ok) {
-        console.log('Update successful', result);
         alert('Profile updated successfully!');
       } else {
         throw new Error(result.message);
@@ -89,17 +97,27 @@ const TrainerProfileEdit = () => {
   };
 
   const handleInputChange = (event) => {
-    const { name, value } = event.target;
-    setTrainerData(prevState => ({ ...prevState, [name]: value }));
+    const { name, value, type, checked } = event.target;
+    setTrainerData(prevState => ({
+      ...prevState,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   const handleFileChange = (event, fieldName) => {
-    setTrainerData(prevState => ({ ...prevState, [fieldName]: event.target.files[0] }));
+    const file = event.target.files[0];
+    if (file) {
+      setTrainerData(prevState => ({
+        ...prevState,
+        [fieldName]: file
+      }));
+    }
   };
 
   const handleContentChange = (value) => {
     setTrainerData(prevState => ({ ...prevState, description: value }));
   };
+
   return (
     <div className="max-w-lg mx-auto p-4">
       <button
@@ -117,90 +135,89 @@ const TrainerProfileEdit = () => {
         <div className="flex items-center justify-center space-x-6 mb-5">
           <div className="shrink-0">
             <img
-              id="preview_img"
               className="h-16 w-16 object-cover rounded-full"
-              src={trainerData.profilePicture || "https://static.vecteezy.com/system/resources/previews/047/305/447/non_2x/default-avatar-profile-icon-with-long-shadow-simple-user-sign-symbol-vector.jpg"}
+              src={
+                trainerData.profilePicture instanceof File 
+                  ? URL.createObjectURL(trainerData.profilePicture)
+                  : trainerData.profilePicture || "https://static.vecteezy.com/system/resources/previews/047/305/447/non_2x/default-avatar-profile-icon-with-long-shadow-simple-user-sign-symbol-vector.jpg"
+              }
               alt="Profile preview"
             />
           </div>
           <label className="block">
-            <span className="sr-only">Choose Cover photo</span>
+            <span className="sr-only">Choose profile picture</span>
             <input
+  type="file"
+  name="profilePicture"
+  onChange={(e) => handleFileChange(e, 'profilePicture')}
+  className="block w-full text-sm text-slate-500
+                     file:mr-4 file:py-2 file:px-4
+                     file:rounded-full file:border-0
+                     file:text-sm file:font-semibold
+                     file:bg-violet-50 file:text-[#CE0000]
+                     hover:file:bg-violet-100"
+/>
+            {/* <input
               type="file"
-              name="profilePicture"
-              onChange={(e) => handleInputChange({ target: { name: 'profilePicture', value: e.target.files[0] } })}
               accept="image/*"
+              onChange={(e) => handleFileChange(e, 'profilePicture')}
               className="block w-full text-sm text-slate-500
                      file:mr-4 file:py-2 file:px-4
                      file:rounded-full file:border-0
                      file:text-sm file:font-semibold
                      file:bg-violet-50 file:text-[#CE0000]
                      hover:file:bg-violet-100"
-            />
+            /> */}
           </label>
         </div>
 
         <div className="mb-6">
-        <label htmlFor="fitnessGoal" className="block text-lg font-medium text-gray-800 mb-1">
-              Username
-            </label>
-            <input
-              type="text"
-              value={trainerData.userName}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
-              required
-              name="username"
-              />
+          <label htmlFor="userName" className="block text-lg font-medium text-gray-800 mb-1">
+            Username
+          </label>
+          <input
+            type="text"
+            id="userName"
+            name="userName"
+            value={trainerData.userName}
+            onChange={handleInputChange}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
+            required
+          />
         </div>
-        <div className="flex gap-4">
-  <div className="mb-6 flex-1">
-    <label htmlFor="email" className="block text-lg font-medium text-gray-800 mb-1">
-      Email
-    </label>
-    <input
-      type="text"
-      value={trainerData.email}
-      id="email"
-      name="email"
-      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
-      required
-    />
-  </div>
 
-  <div className="mb-6 flex-1">
-    <label htmlFor="yearsOfExperience" className="block text-lg font-medium text-gray-800 mb-1">
-      Years of Experience
-    </label>
-    <input
-      type="number"
-      id="yearsOfExperience"
-      value={trainerData.yearsOfExperience}
-      name="yearsOfExperience"
-      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
-      required
-      min="0"
-    />
-  </div>
-</div>
-<div className='flex gap-4 mb-5'>
-<label htmlFor="yearsOfExperience" className="block text-lg font-medium text-gray-800 mb-1">
-              Resume:
+        <div className="flex gap-4">
+          <div className="mb-6 flex-1">
+            <label htmlFor="email" className="block text-lg font-medium text-gray-800 mb-1">
+              Email
             </label>
             <input
-              type="file"
-              name="resume"
-            
-              className="block w-full text-sm text-slate-500
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-full file:border-0
-              file:text-sm file:font-semibold
-              file:bg-violet-50 file:text-[#CE0000]
-              hover:file:bg-violet-100"
+              type="email"
+              id="email"
+              name="email"
+              value={trainerData.email}
+              onChange={handleInputChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
               required
             />
           </div>
 
-          
+          <div className="mb-6 flex-1">
+            <label htmlFor="yearsOfExperience" className="block text-lg font-medium text-gray-800 mb-1">
+              Years of Experience
+            </label>
+            <input
+              type="number"
+              id="yearsOfExperience"
+              name="yearsOfExperience"
+              value={trainerData.yearsOfExperience}
+              onChange={handleInputChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
+              min="0"
+              required
+            />
+          </div>
+        </div>
 
         <div className="mb-6">
           <label htmlFor="fitnessGoal" className="block text-lg font-medium text-gray-800 mb-1">
@@ -208,15 +225,16 @@ const TrainerProfileEdit = () => {
           </label>
           <input
             type="text"
-            value={trainerData.fitnessGoal}
             id="fitnessGoal"
             name="fitnessGoal"
+            value={trainerData.fitnessGoal}
+            onChange={handleInputChange}
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
           />
         </div>
 
         <div className="mb-6">
-          <label htmlFor="availableHours" className="block text-lg font-medium text-gray-800 mb-1">
+          <label htmlFor="availabilityTime" className="block text-lg font-medium text-gray-800 mb-1">
             Available Hours
           </label>
           <div className="relative">
@@ -224,13 +242,14 @@ const TrainerProfileEdit = () => {
               <Clock className="h-5 w-5 text-gray-400" />
             </div>
             <select
-              id="availableHours"
-              name="availableHours"
-              value={trainerData.availabilityHours}
+              id="availabilityTime"
+              name="availabilityTime"
+              value={trainerData.availabilityTime}
+              onChange={handleInputChange}
               className="block w-full pl-10 pr-10 py-2.5 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white shadow-sm transition duration-150 ease-in-out appearance-none cursor-pointer"
               required
             >
-              <option value="" disabled selected>Select available hours</option>
+              <option value="" disabled>Select available hours</option>
               <option value="morning">Morning</option>
               <option value="mid_day">Mid-Day</option>
               <option value="afternoon">Afternoon</option>
@@ -242,28 +261,40 @@ const TrainerProfileEdit = () => {
             </div>
           </div>
         </div>
-        <div className='flex gap-4 mb-5'>
-<label htmlFor="yearsOfExperience" className="block text-lg font-medium  w-[175px]
- text-gray-800 mb-1">
-              Cover Photo:
-            </label>
-            <input
-              type="file"
-              name="coverPhoto"
-             
-              className="block w-full text-sm text-slate-500
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-full file:border-0
-              file:text-sm file:font-semibold
-              file:bg-violet-50 file:text-[#CE0000]
-              hover:file:bg-violet-100"
-              required
-            />
-          </div>
 
-        <div className="mb-6 flex gap-6 max-w-3xl">
+        <div className="mb-5">
+          <label className="block text-lg font-medium text-gray-800 mb-1">
+            Cover Photo
+          </label>
+
+          <input
+  type="file"
+  name="coverPhoto"
+  onChange={(e) => handleFileChange(e, 'coverPhoto')}
+  className="block w-full text-sm text-slate-500
+                   file:mr-4 file:py-2 file:px-4
+                   file:rounded-full file:border-0
+                   file:text-sm file:font-semibold
+                   file:bg-violet-50 file:text-[#CE0000]
+                   hover:file:bg-violet-100"
+/>
+          {/* <input
+            type="file"
+            name="coverPhoto"
+            accept="image/*"
+            onChange={(e) => handleFileChange(e, 'coverPhoto')}
+            className="block w-full text-sm text-slate-500
+                   file:mr-4 file:py-2 file:px-4
+                   file:rounded-full file:border-0
+                   file:text-sm file:font-semibold
+                   file:bg-violet-50 file:text-[#CE0000]
+                   hover:file:bg-violet-100"
+          /> */}
+        </div>
+
+        <div className="mb-6 flex gap-6">
           <div className="flex-1">
-            <label htmlFor="date-range-start" className="block text-lg font-medium text-gray-700 mb-2">
+            <label htmlFor="startDay" className="block text-lg font-medium text-gray-700 mb-2">
               Start Day
             </label>
             <div className="relative">
@@ -271,29 +302,27 @@ const TrainerProfileEdit = () => {
                 <Calendar className="h-5 w-5 text-gray-400" />
               </div>
               <select
-                id="date-range-start"
-                name="dateRangeStart"
+                id="startDay"
+                name="startDay"
                 value={trainerData.startDay}
+                onChange={handleInputChange}
                 className="block w-full pl-10 pr-10 py-2.5 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white shadow-sm transition duration-150 ease-in-out appearance-none cursor-pointer"
                 required
               >
                 <option value="" disabled>Select start day</option>
-                <option value="monday">Monday</option>
-                <option value="tuesday">Tuesday</option>
-                <option value="wednesday">Wednesday</option>
-                <option value="thursday">Thursday</option>
-                <option value="friday">Friday</option>
-                <option value="saturday">Saturday</option>
-                <option value="sunday">Sunday</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
               </select>
-              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-                <ChevronDown className="h-5 w-5 text-gray-400" />
-              </div>
             </div>
           </div>
 
           <div className="flex-1">
-            <label htmlFor="date-range-end" className="block text-lg font-medium text-gray-700 mb-2">
+            <label htmlFor="endDay" className="block text-lg font-medium text-gray-700 mb-2">
               End Day
             </label>
             <div className="relative">
@@ -301,36 +330,35 @@ const TrainerProfileEdit = () => {
                 <Calendar className="h-5 w-5 text-gray-400" />
               </div>
               <select
-                id="date-range-end"
-                name="dateRangeEnd"
+                id="endDay"
+                name="endDay"
+                value={trainerData.endDay}
+                onChange={handleInputChange}
                 className="block w-full pl-10 pr-10 py-2.5 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white shadow-sm transition duration-150 ease-in-out appearance-none cursor-pointer"
                 required
               >
                 <option value="" disabled>Select end day</option>
-                <option value="monday">Monday</option>
-                <option value="tuesday">Tuesday</option>
-                <option value="wednesday">Wednesday</option>
-                <option value="thursday">Thursday</option>
-                <option value="friday">Friday</option>
-                <option value="saturday">Saturday</option>
-                <option value="sunday">Sunday</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
               </select>
-              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-                <ChevronDown className="h-5 w-5 text-gray-400" />
-              </div>
             </div>
           </div>
         </div>
 
         <div className="mb-6">
-          <label htmlFor="content" className="block text-lg font-medium text-gray-800 mb-1">
+          <label htmlFor="description" className="block text-lg font-medium text-gray-800 mb-1">
             Description
           </label>
           <ReactQuill
             theme="snow"
             value={trainerData.description}
             onChange={handleContentChange}
-            name="content"
+            className="h-48 mb-12"
           />
         </div>
 
@@ -342,9 +370,9 @@ const TrainerProfileEdit = () => {
             <input
               type="number"
               id="price"
-              value={trainerData.price}
               name="price"
-              placeholder="Enter price"
+              value={trainerData.price}
+              onChange={handleInputChange}
               min="0"
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
               required
@@ -357,29 +385,28 @@ const TrainerProfileEdit = () => {
             </label>
             <input
               type="text"
-              value={trainerData.location}
               id="location"
               name="location"
-              placeholder="City, Country"
+              value={trainerData.location}
+              onChange={handleInputChange}
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-indigo-500"
             />
           </div>
         </div>
 
-
         <div className="mb-6 flex items-center space-x-3">
-  <input
-    type="checkbox"
-    id="advancedNeeded"
-    name="advancedNeeded"
-    checked={trainerData.advancedNeeded}
-    onChange={(e) => handleInputChange({ target: { name: 'advancedNeeded', value: e.target.checked } })}
-    className="h-5 w-5 text-indigo-600 border-gray-300 rounded"
-  />
-  <label htmlFor="advancedNeeded" className="text-lg font-medium text-gray-800">
-    Advanced needed?
-  </label>
-</div>
+          <input
+            type="checkbox"
+            id="advancedNeeded"
+            name="advancedNeeded"
+            checked={trainerData.advancedNeeded}
+            onChange={handleInputChange}
+            className="h-5 w-5 text-indigo-600 border-gray-300 rounded"
+          />
+          <label htmlFor="advancedNeeded" className="text-lg font-medium text-gray-800">
+            Advanced needed?
+          </label>
+        </div>
 
         <div className="flex justify-end">
           <button
