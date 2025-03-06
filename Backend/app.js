@@ -118,6 +118,18 @@ app.use("/api/client", clientRoutes);
 app.use("/api/availability", availabilityRoutes);
 app.use("/api/chat", chatRoutes);
 
+//this is of the solo video call
+
+// app.js (additions to your existing file)
+const videoCallRoutes = require("./routes/videoCallRoute");
+const videoCallController = require("./controller/chatController/videoCallController");
+
+// Add the video call routes
+app.use("/api/video-call", videoCallRoutes);
+
+// Initialize the video call socket service (assuming you already have socket.io set up)
+videoCallController.initializeVideoSocket(io);
+
 // Database connection
 const { connectDatabase } = require("./database/database");
 connectDatabase();
