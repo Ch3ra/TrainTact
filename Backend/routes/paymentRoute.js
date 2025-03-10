@@ -1,10 +1,18 @@
-const { initiateKhaltiPayment, verifyPidx, EsewaInitiatePayment, verifyEsewaPayment, } = require("../controller/payment/paymentController");
+const { 
+    initiateKhaltiPayment, 
+    verifyPidx,
+    initiateEsewaPayment,
+    verifyEsewaPayment 
+} = require("../controller/payment/paymentController");
 
 const router = require("express").Router();
 
-//khalti Payment
-router.route("/").post(initiateKhaltiPayment)
-router.route("/success").get(verifyPidx)
-router.route("/esewa/initiate").post(EsewaInitiatePayment)
+// Khalti payment routes
+router.post('/khalti', initiateKhaltiPayment);
+router.get('/khalti-success', verifyPidx);
 
-module.exports= router
+// eSewa payment routes
+router.post('/esewa', initiateEsewaPayment);
+router.get('/esewa-success', verifyEsewaPayment);
+
+module.exports = router;

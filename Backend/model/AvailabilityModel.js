@@ -34,10 +34,11 @@ const workoutScheduleSchema = new mongoose.Schema({
       type: Boolean,
       default: false, 
     },
-    paymentStatus:{
-        type:Boolean,
-        default:false
-    },
+    paymentStatus: {
+        type: String,
+        enum: ['pending', 'paid', 'failed'],
+        default: 'pending',
+      },
     amount:{
         type:Number,
         default:0,
