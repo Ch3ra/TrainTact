@@ -1,9 +1,9 @@
-const { default: axios } = require("axios");
+ // Add at top
+const axios = require('axios');
 
+const { parseString } = require('xml2js');
 
-
-
-// eSewa Payment Integration
+// eSewa Payment Integration - Fixed
 exports.initiateEsewaPayment = async (req, res) => {
     try {
         const { orderId, amount } = req.body;
@@ -12,21 +12,23 @@ exports.initiateEsewaPayment = async (req, res) => {
             return res.status(400).json({ message: "Please provide orderId and amount" });
         }
 
-        // Define eSewa specific parameters
-        const tAmt = amount; 
-        const amt = amount; 
-        const txAmt = 0;
-        const psc = 0; 
-        const pdc = 0; 
-        const scd = "EPAYTEST"; 
-        const pid = orderId; 
-        const su = "http://localhost:5173/success"; 
-        const fu = "http://localhost:5173/failure";
+        // Convert amount to NPR (remove paisa conversion)
+        const numericAmount = Number(amount).toFixed(2);
 
-        // Use the provided URL
+        const params = {
+            amt: numericAmount,
+            psc: 0,
+            pdc: 0,
+            txAmt: 0,
+            tAmt: numericAmount,
+            pid: orderId.toString(),
+            scd: "EPAYTEST",
+            su: "http://localhost:5173/success",
+            fu: "http://localhost:5173/failure"
+        };
+
         const paymentUrl = "https://rc-epay.esewa.com.np/api/epay/main/v2/form";
 
-        // Return HTML form for redirection to eSewa
         const formHtml = `
             <html>
                 <head>
@@ -34,72 +36,76 @@ exports.initiateEsewaPayment = async (req, res) => {
                 </head>
                 <body>
                     <form id="esewaForm" action="${paymentUrl}" method="POST">
-                        <input type="hidden" name="amt" value="${amt}">
-                        <input type="hidden" name="psc" value="${psc}">
-                        <input type="hidden" name="pdc" value="${pdc}">
-                        <input type="hidden" name="txAmt" value="${txAmt}">
-                        <input type="hidden" name="tAmt" value="${tAmt}">
-                        <input type="hidden" name="pid" value="${pid}">
-                        <input type="hidden" name="scd" value="${scd}">
-                        <input type="hidden" name="su" value="${su}">
-                        <input type="hidden" name="fu" value="${fu}">
+                        ${Object.entries(params).map(([key, value]) => `
+                            <input type="hidden" name="${key}" value="${value}">
+                        `).join('')}
                     </form>
-                    <script>document.getElementById("esewaForm").submit();</script>
+                    <script>
+                        document.getElementById("esewaForm").submit();
+                        window.onload = function() {
+                            document.getElementById("esewaForm").submit();
+                        }
+                    </script>
                 </body>
             </html>
         `;
         
-        // Send form for auto-submission
         res.set('Content-Type', 'text/html');
         res.send(formHtml);
     } catch (error) {
-        console.error("eSewa Payment Error:", error.message);
+        console.error("eSewa Payment Error:", error);
         res.status(500).json({ message: "Payment initiation failed", error: error.message });
     }
 };
 
-// eSewa Payment Verification
+// eSewa Payment Verification - Fixed
 exports.verifyEsewaPayment = async (req, res) => {
     try {
-        const { pid, refId, amt, txnStatus } = req.query;
+        const { pid, refId, amt } = req.query;
 
-        if (!pid || !refId) {
+        if (!pid || !refId || !amt) {
             return res.status(400).json({ message: "Missing required parameters" });
         }
 
-        // For production use: https://esewa.com.np/epay/transrec
         const verificationUrl = "https://uat.esewa.com.np/epay/transrec";
-        
         const params = {
             amt: amt,
             rid: refId,
             pid: pid,
-            scd: "EPAYTEST" // Replace with your merchant code
+            scd: "EPAYTEST"
         };
 
-        const response = await axios.get(verificationUrl, {
-            params: params
+        const response = await axios.get(verificationUrl, { params });
+
+        // Proper XML parsing
+        parseString(response.data, (err, result) => {
+            if (err) {
+                console.error("XML Parse Error:", err);
+                return res.status(500).json({ 
+                    status: 'error',
+                    message: "Payment verification failed" 
+                });
+            }
+
+            const responseCode = result?.response?.response_code?.[0];
+            if (responseCode === 'Success') {
+                return res.status(200).json({ 
+                    status: 'success',
+                    message: "Payment successful", 
+                    orderId: pid,
+                    transactionId: refId,
+                    amount: amt
+                });
+            } else {
+                return res.status(400).json({ 
+                    status: 'failed',
+                    message: "Payment verification failed" 
+                });
+            }
         });
 
-        // Check response - eSewa returns XML response
-        if (response.data.includes('success')) {
-            // Payment successful
-            // Update your database or notify your frontend
-            return res.status(200).json({ 
-                status: 'completed',
-                message: "Payment successful", 
-                orderId: pid,
-                transactionId: refId
-            });
-        } else {
-            // Payment failed
-            return res.status(400).json({ 
-                status: 'failed',
-                message: "Payment verification failed" 
-            });
-        }
     } catch (error) {
-        console.error("eSewa Verification Error:", error.message);
+        console.error("eSewa Verification Error:", error);
         res.status(500).json({ 
             status: 'error',
             message: "Payment verification failed", 

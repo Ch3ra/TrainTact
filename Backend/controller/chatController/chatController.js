@@ -19,20 +19,22 @@ const initializeSocket = (socketIo) => {
     });
 
     // Send and get message
-    socket.on("sendMessage", async ({ senderId, receiverId, text }) => {
-      try {
-        const user = getUser(receiverId);
-        if (user) {
-          io.to(user.socketId).emit("getMessage", {
-            senderId,
-            text,
-            createdAt: new Date(),
-          });
-        }
-      } catch (err) {
-        console.error("Socket message error:", err);
-      }
-    });
+  // Modify the existing socket 'sendMessage' handler
+socket.on("sendMessage", async ({ senderId, receiverId, text, file }) => {
+  try {
+    const user = getUser(receiverId);
+    if (user) {
+      io.to(user.socketId).emit("getMessage", {
+        senderId,
+        text,
+        file, // Add file to socket emission
+        createdAt: new Date(),
+      });
+    }
+  } catch (err) {
+    console.error("Socket message error:", err);
+  }
+});
 
     // Handle typing status
     socket.on("typing", ({ receiverId }) => {
@@ -177,11 +179,13 @@ const getConversations = async (req, res) => {
 const sendMessage = async (req, res) => {
   try {
     const { conversationId, senderId, text } = req.body;
+    const files = req.files || [];
 
-    if (!conversationId || !senderId || !text) {
-      return res
-        .status(400)
-        .json({ message: "conversationId, senderId, and text are required" });
+    // Validate either text or files must be present
+    if (!text && files.length === 0) {
+      return res.status(400).json({ 
+        message: "Either text or file is required" 
+      });
     }
 
     const conversation = await Conversation.findById(conversationId);
@@ -189,34 +193,40 @@ const sendMessage = async (req, res) => {
       return res.status(404).json({ message: "Conversation not found" });
     }
 
+    // Handle file attachments
+    const fileAttachments = files.map(file => ({
+      filename: file.originalname,
+      path: file.path,
+      mimetype: file.mimetype
+    }));
+
     const newMessage = new Message({
       conversation: conversationId,
       sender: senderId,
       text,
+      ...(files.length > 0 && { file: fileAttachments[0] }) // Store first file
     });
 
     const savedMessage = await newMessage.save();
 
-    // Get receiver ID from conversation members
-    const receiverId = conversation.members.find(
-      (member) => member.toString() !== senderId
-    );
-
-    // Update conversation's lastMessage and set readStatus[receiverId] to false
+    // Update conversation
     conversation.lastMessage = savedMessage._id;
-
+    const receiverId = conversation.members.find(
+      member => member.toString() !== senderId
+    );
+    
     if (receiverId) {
       conversation.readStatus.set(receiverId.toString(), false);
     }
-
     await conversation.save();
 
-    // Emit message to receiver through socket
+    // Emit message with file info
     const receiver = getUser(receiverId);
     if (receiver) {
       io.to(receiver.socketId).emit("getMessage", {
         senderId,
         text,
+        file: savedMessage.file,
         messageId: savedMessage._id,
         createdAt: savedMessage.createdAt,
       });

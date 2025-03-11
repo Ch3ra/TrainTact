@@ -13,6 +13,8 @@ import { Link } from "react-router-dom";
 import TrainerNavbar from "../../pages/trainerPage/TrainerNavbar";
 import axios from "axios";
 import { useParams } from "react-router-dom";
+import { v4 as uuidv4 } from 'uuid';
+
 
 const TrainerDetails = () => {
   const [userId, setUserId] = useState(null);
@@ -141,7 +143,49 @@ const TrainerDetails = () => {
     window.location.href = url;
   };
 
-//this is for the esewa!!
+// This is for eSewa
+// Fixed eSewa Handler
+const handleEsewa = async () => {
+  try {
+    const bookingDetails = {
+      clientId: userId,
+      trainerId: trainerId,
+      price: trainerDetails.price,
+      ...formData,
+    };
+
+    localStorage.setItem("bookingDetails", JSON.stringify(bookingDetails));
+
+    // Generate proper frontend ID
+    const orderId = uuidv4(); // Use UUID instead of mongoose ID
+
+    const response = await axios.post(
+      "http://localhost:3000/api/payment/esewa",
+      {
+        orderId: orderId,
+        amount: trainerDetails.price // Remove *100 conversion
+      },
+      { responseType: "text" }
+    );
+
+    // Handle popup blockers
+    const esewaWindow = window.open('', '_blank');
+    if (esewaWindow) {
+      esewaWindow.document.write(response.data);
+      esewaWindow.focus();
+    } else {
+      alert('Please allow pop-ups for payment processing');
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      iframe.contentWindow.document.write(response.data);
+    }
+    
+  } catch (error) {
+    console.error("eSewa Error:", error);
+    alert("Payment initiation failed. Please try again.");
+  }
+};
 
 
 
@@ -471,20 +515,20 @@ const TrainerDetails = () => {
                             </button>
 
                             {/* Esewa Button */}
-                            <button
-                              type="button"
-                              className="w-full bg-white hover:bg-[#60BB46] text-[#60BB46] hover:text-white font-medium py-2.5 px-5 rounded-lg border border-gray-200 transition-colors duration-200 shadow-sm flex items-center justify-center gap-2"
-                            >
-                              <div className="w-6 h-6 flex items-center justify-center">
-                                {/* Image placeholder for Esewa logo */}
-                                <img
-                                  src="/esewa-logo.png"
-                                  alt="Esewa Logo"
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                              Pay with Esewa
-                            </button>
+<button
+  type="button"
+  onClick={handleEsewa}
+  className="w-full bg-white hover:bg-[#60BB46] text-[#60BB46] hover:text-white font-medium py-2.5 px-5 rounded-lg border border-gray-200 transition-colors duration-200 shadow-sm flex items-center justify-center gap-2"
+>
+  <div className="w-6 h-6 flex items-center justify-center">
+    <img
+      src="/esewa-logo.png"
+      alt="Esewa Logo"
+      className="w-full h-full object-contain"
+    />
+  </div>
+  Pay with Esewa
+</button>
                           </div>
                         </div>
                       </form>
