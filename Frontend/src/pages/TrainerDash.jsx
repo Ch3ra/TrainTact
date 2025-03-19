@@ -13,8 +13,11 @@ import {
 import { Link } from "react-router-dom";
 import TrainerNavbar from "./trainerPage/TrainerNavbar";
 import axios from 'axios'; 
+import { useNavigate } from "react-router-dom";
 
 const TrainerDash = () => {
+  const [showProfileModal, setShowProfileModal] = useState(false);
+const navigate = useNavigate();
   const [userId, setUserId] = useState(null);
   const [trainerDetails, setTrainerDetails] = useState(null);
   const [bookings, setBookings] = useState([]);
@@ -40,7 +43,16 @@ const TrainerDash = () => {
       if (response.status === 200) {
         const trainerData = response.data.trainer;
         setTrainerDetails(trainerData);
-        setAdvancedNeeded(trainerData.advancedNeeded); // Store advancedNeeded in state
+        setAdvancedNeeded(trainerData.advancedNeeded); 
+        // Check if required fields are empty
+      if (!trainerData.description || 
+        !trainerData.price || 
+        !trainerData.availabilityHours || 
+        !trainerData.coverPhoto) {
+      setShowProfileModal(true);
+    }
+        
+        // Store advancedNeeded in state
         console.log("Trainer Data:", trainerData);
       }
     } catch (error) {
@@ -282,6 +294,33 @@ const TrainerDash = () => {
 
       
 </div>
+
+{/* Profile Completion Modal */}
+{showProfileModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+      <h3 className="text-xl font-bold mb-4">Profile Incomplete</h3>
+      <p className="text-gray-600 mb-6">
+        It looks like you haven't completed your profile information. 
+        Would you like to fill it now?
+      </p>
+      <div className="flex justify-end space-x-4">
+        <button 
+          onClick={() => setShowProfileModal(false)}
+          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+        >
+          Later
+        </button>
+        <button 
+          onClick={() => navigate('/addTrainerProfile')}
+          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+        >
+          Yes, Fill Profile
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
 </div>
 

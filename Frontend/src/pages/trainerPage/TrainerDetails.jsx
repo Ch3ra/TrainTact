@@ -9,7 +9,7 @@ import {
   Clock,
   Calendar,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import TrainerNavbar from "../../pages/trainerPage/TrainerNavbar";
 import axios from "axios";
 import { useParams } from "react-router-dom";
@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 
 const TrainerDetails = () => {
+  const navigate=useNavigate();
   const [userId, setUserId] = useState(null);
   const [trainerDetails, setTrainerDetails] = useState(null);
   const [advancedNeeded, setAdvancedNeeded] = useState(false);
@@ -47,7 +48,7 @@ const TrainerDetails = () => {
       console.error("Failed to fetch trainer details", error);
     }
   };
-  //ya xqaii book from haii
+ 
 
   const [modalOpen, setModalOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -67,7 +68,7 @@ const TrainerDetails = () => {
       setUserId(decodedToken.id); // Assuming 'id' is the field in your token containing the client ID
     }
   }, []);
-// this is for the form
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prevState) => ({
@@ -142,51 +143,6 @@ const TrainerDetails = () => {
     var url = response.data;
     window.location.href = url;
   };
-
-// This is for eSewa
-// Fixed eSewa Handler
-const handleEsewa = async () => {
-  try {
-    const bookingDetails = {
-      clientId: userId,
-      trainerId: trainerId,
-      price: trainerDetails.price,
-      ...formData,
-    };
-
-    localStorage.setItem("bookingDetails", JSON.stringify(bookingDetails));
-
-    // Generate proper frontend ID
-    const orderId = uuidv4(); // Use UUID instead of mongoose ID
-
-    const response = await axios.post(
-      "http://localhost:3000/api/payment/esewa",
-      {
-        orderId: orderId,
-        amount: trainerDetails.price // Remove *100 conversion
-      },
-      { responseType: "text" }
-    );
-
-    // Handle popup blockers
-    const esewaWindow = window.open('', '_blank');
-    if (esewaWindow) {
-      esewaWindow.document.write(response.data);
-      esewaWindow.focus();
-    } else {
-      alert('Please allow pop-ups for payment processing');
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-      iframe.contentWindow.document.write(response.data);
-    }
-    
-  } catch (error) {
-    console.error("eSewa Error:", error);
-    alert("Payment initiation failed. Please try again.");
-  }
-};
-
 
 
   return (
@@ -505,29 +461,39 @@ const handleEsewa = async () => {
                             >
                               <div className="w-6 h-6 flex items-center justify-center">
                                 {/* Image placeholder for Khalti logo */}
-                                <img
-                                  src="/khalti-logo.png"
-                                  alt="Khalti Logo"
-                                  className="w-full h-full object-contain"
-                                />
+                               
                               </div>
                               Pay with Khalti
                             </button>
 
                             {/* Esewa Button */}
-<button
+                            <button
   type="button"
-  onClick={handleEsewa}
+  onClick={() => {
+    // First, save the booking details to localStorage
+    const bookingDetails = {
+      clientId: userId,
+      trainerId: trainerId,
+      trainerName: trainerDetails?.userName || "Trainer",
+      price: trainerDetails?.price || 0,
+      ...formData
+    };
+    localStorage.setItem("bookingDetails", JSON.stringify(bookingDetails));
+    
+    // Then navigate to payment page with required data
+    navigate('/payment', {
+      state: {
+        totalAmount: trainerDetails ? trainerDetails.price : 0,
+        trainerName: trainerDetails ? trainerDetails.userName : "Trainer"
+      }
+    });
+  }}
   className="w-full bg-white hover:bg-[#60BB46] text-[#60BB46] hover:text-white font-medium py-2.5 px-5 rounded-lg border border-gray-200 transition-colors duration-200 shadow-sm flex items-center justify-center gap-2"
 >
   <div className="w-6 h-6 flex items-center justify-center">
-    <img
-      src="/esewa-logo.png"
-      alt="Esewa Logo"
-      className="w-full h-full object-contain"
-    />
+   
   </div>
-  Pay with Esewa
+  Pay with eSewa
 </button>
                           </div>
                         </div>

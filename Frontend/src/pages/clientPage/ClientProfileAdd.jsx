@@ -54,7 +54,7 @@ const ClientProfileAdd = () => {
     .then(response => response.json())
     .then(data => {
       console.log('Success:', data);
-      navigate('/profile'); // Redirect or handle response
+      navigate('/userProfile'); // Redirect or handle response
     })
     .catch(error => {
       console.error('Error:', error);

@@ -46,7 +46,7 @@ const TrainerProfileAdd = () => {
     formData.append('endDay', e.target.dateRangeEnd.value);
     formData.append('coverPhoto', e.target.coverphoto.files[0]);
     formData.append('advancedNeeded', e.target.advancedNeeded.checked);
-
+    
     try {
       const response = await axios.post(`http://localhost:3000/api/trainer/add/${userId}`, formData, {
         headers: {
@@ -56,6 +56,14 @@ const TrainerProfileAdd = () => {
       });
       console.log(response.data);
       
+      // Check if status is 200 and navigate to trainerdash
+      if (response.status === 200) {
+        // Using window.location for navigation
+        window.location.href = '/trainerdash';
+        
+        // Alternatively, if you're using React Router:
+        // navigate('/trainerdash');
+      }
     } catch (error) {
       console.error('Error submitting form:', error);
     }

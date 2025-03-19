@@ -4,8 +4,9 @@ import Navbar from './../public/components/Navbar';
 import SearchBar from './../form/searchbar/SearchBar';
 import Card from './../public/components/Card';
 import aboutus from "./../assets/images/video3.mp4";
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import {NavLink} from 'react-router-dom';
 import Pagination from '../public/components/Paginatiom';
+import { useNavigate } from "react-router-dom";
 
 
 const ClientDash = () => {
@@ -14,7 +15,41 @@ const ClientDash = () => {
   const [trainers, setTrainers] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+const navigate = useNavigate();
   
+  
+  useEffect(() => {
+    const checkProfileComplete = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+  
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        const response = await fetch(`http://localhost:3000/api/client/${decodedToken.id}`);
+        const data = await response.json();
+  
+        // Check if required fields are present
+        const requiredFields = [
+          data.user?.fitnessGoal,
+          data.user?.location,
+          data.clientDetails?.height,
+          data.clientDetails?.weight,
+          data.clientDetails?.fitnessLevel
+        ];
+  
+        const isComplete = requiredFields.every(field => 
+          field !== undefined && field !== null && field !== ''
+        );
+  
+        if (!isComplete) setShowProfileModal(true);
+      } catch (error) {
+        console.error("Profile check error:", error);
+      }
+    };
+  
+    checkProfileComplete();
+  }, []);
 
  
 
@@ -29,6 +64,7 @@ const ClientDash = () => {
         }
 
         setTrainers(data.data);
+        
         setIsLoading(false);
       } catch (error) {
         console.error('Fetching trainers failed:', error);
@@ -220,6 +256,34 @@ const ClientDash = () => {
       <div className='flex justify-center mt-4'>
         <Pagination/>
       </div>
+
+
+      {/* Profile Completion Modal */}
+{showProfileModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+      <h3 className="text-xl font-bold mb-4">Profile Incomplete</h3>
+      <p className="text-gray-600 mb-6">
+        Please complete your profile information to get the best experience.
+        Would you like to fill it now?
+      </p>
+      <div className="flex justify-end space-x-4">
+        <button 
+          onClick={() => setShowProfileModal(false)}
+          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+        >
+          Later
+        </button>
+        <button 
+          onClick={() => navigate('/addprofile')}
+          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+        >
+          Yes, Fill Profile
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </>
   );
 };

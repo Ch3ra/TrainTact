@@ -11,8 +11,6 @@ const router = require("express").Router();
 router.post('/khalti', initiateKhaltiPayment);
 router.get('/khalti-success', verifyPidx);
 
-// eSewa payment routes
-router.post('/esewa', initiateEsewaPayment);
-router.get('/esewa-success', verifyEsewaPayment);
+
 
 module.exports = router;

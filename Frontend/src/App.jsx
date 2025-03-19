@@ -34,6 +34,9 @@ import ClientDescription from "./pages/userPage/ClientDescription";
 import TrainerDetails from "./pages/trainerPage/TrainerDetails";
 import PaymentSuccess from "./pages/userPage/PaymentSuccess";
 import Chat from "./pages/chat/Chat";
+import Payment from "./pages/trainerPage/Payment/Payment";
+import Success from "./pages/trainerPage/Payment/Success";
+import Failure from "./pages/trainerPage/Payment/Failure";
 
 
 
@@ -76,11 +79,15 @@ function App() {
           <Route path="/addProfile" element={<ClientProfileAdd />} />
           <Route path="/editProfile" element={<ClientProfileEdit />} />
           <Route path="/clientDescription/:id" element={<ClientDescription />} />
-          <Route path="/success" element={<PaymentSuccess />} />
+          <Route path="/payment/success" element={<PaymentSuccess />} />
+
 
           <Route path="/trainerDetails/:id" element={<TrainerDetails />} />
 
           <Route path="/trainerNavbar" element={<TrainerNavbar />} />
+          <Route path="/payment" element={<Payment/>} />
+          <Route path="/success" element={<Success/>} />
+          <Route path="/efailure" element={<Failure/>} />
           <Route path="/addTrainerProfile" element={<TrainerProfileAdd />} />
           <Route path="/editTrainerProfile" element={<TrainerProfileEdit />} />
           <Route path="/clientRequest" element={<ClientRequest />} />

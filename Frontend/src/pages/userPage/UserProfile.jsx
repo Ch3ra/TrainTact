@@ -235,6 +235,11 @@ const UserProfile = () => {
       <div className="flex">
         <aside className="w-52 bg-white h-screen p-4 border-r">
           <nav className="space-y-4">
+          <Link to="/clientDash">
+  <div className="flex items-center space-x-3 cursor-pointer bg-blue-50 p-3 rounded-lg text-red-600">
+    <span>Home</span>
+  </div>
+</Link>
             <div className="flex items-center space-x-3 cursor-pointer bg-blue-50 p-3 rounded-lg text-red-600">
               <div className="w-6 h-6">👤</div>
               <span>Profile</span>

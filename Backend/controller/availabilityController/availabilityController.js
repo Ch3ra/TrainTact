@@ -2,26 +2,43 @@ const WorkoutSchedule = require('../../model/AvailabilityModel');
 const Conversation = require("../../model/conversationModel");
 const User = require('../../model/userModel');
 
-// Create new workout schedule
+const convertTimeToMinutes = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
 exports.createSchedule = async (req, res) => {
-    const { clientId, trainerId, startTime, duration, startDate, endDate, message } = req.body;
+    const { clientId, trainerId, startTime, duration, startDate, endDate, message, paymentStatus } = req.body;
 
     if (!clientId || !trainerId || !startTime || !duration || !startDate || !endDate) {
         return res.status(400).send('Please provide all required fields.');
     }
 
     try {
-        const existingBooking = await WorkoutSchedule.findOne({
-            clientId,
-            trainerId,
-            startDate: { $lte: new Date(endDate) },
-            endDate: { $gte: new Date(startDate) },
+        // Convert new booking's time to minutes
+        const newStartMinutes = convertTimeToMinutes(startTime);
+        const newEndMinutes = newStartMinutes + parseInt(duration, 10);
+
+        // Find all existing bookings for the trainer with overlapping dates
+        const existingBookings = await WorkoutSchedule.find({
+            trainerId: trainerId,
+            $and: [
+                { startDate: { $lte: new Date(endDate) } },
+                { endDate: { $gte: new Date(startDate) } }
+            ]
         });
 
-        if (existingBooking) {
-            return res.status(400).send('Booking already exists for this period.');
+        // Check each existing booking for time overlap
+        for (const existing of existingBookings) {
+            const existingStartMinutes = convertTimeToMinutes(existing.startTime);
+            const existingEndMinutes = existingStartMinutes + existing.duration;
+
+            if (newStartMinutes < existingEndMinutes && existingStartMinutes < newEndMinutes) {
+                return res.status(400).send('Trainer is already booked for this time slot.');
+            }
         }
 
+        // Create new schedule if no conflicts
         const schedule = new WorkoutSchedule({
             clientId,
             trainerId,
@@ -29,7 +46,9 @@ exports.createSchedule = async (req, res) => {
             duration,
             startDate: new Date(startDate),
             endDate: new Date(endDate),
-            message
+            message,
+            paymentStatus 
+            
         });
 
         await schedule.save();
