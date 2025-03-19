@@ -102,7 +102,7 @@ const Payment = () => {
           <input type="hidden" id="product_code" name="product_code" value="EPAYTEST" />
           <input type="hidden" id="product_service_charge" name="product_service_charge" value="0" />
           <input type="hidden" id="product_delivery_charge" name="product_delivery_charge" value="0" />
-          <input type="hidden" id="success_url" name="success_url" value="http://localhost:5173/esuccess" />
+          <input type="hidden" id="success_url" name="success_url" value="http://localhost:5173/payment/success" />
           <input type="hidden" id="failure_url" name="failure_url" value="http://localhost:5173/efailure" />
           <input type="hidden" id="signed_field_names" name="signed_field_names" value="total_amount,transaction_uuid,product_code" />
           <input type="hidden" id="signature" name="signature" value={hashInBase64} />
