@@ -1,6 +1,8 @@
 const Conversation = require("../../model/conversationModel");
 const User = require("../../model/userModel");
 const Message = require("../../model/messageModel");
+const fs = require('fs');
+const path = require('path');
 
 let io;
 
@@ -19,22 +21,27 @@ const initializeSocket = (socketIo) => {
     });
 
     // Send and get message
-  // Modify the existing socket 'sendMessage' handler
-socket.on("sendMessage", async ({ senderId, receiverId, text, file }) => {
-  try {
-    const user = getUser(receiverId);
-    if (user) {
-      io.to(user.socketId).emit("getMessage", {
-        senderId,
-        text,
-        file, // Add file to socket emission
-        createdAt: new Date(),
-      });
-    }
-  } catch (err) {
-    console.error("Socket message error:", err);
-  }
-});
+    socket.on("sendMessage", async ({ senderId, receiverId, text, files }) => {
+      try {
+        const user = getUser(receiverId);
+        if (user) {
+          // Transform files to include full URLs before sending through socket
+          const filesWithUrls = files ? files.map(file => ({
+            ...file,
+            url: `${socket.request.headers.host}/${file.path.replace(/\\/g, '/')}`
+          })) : [];
+          
+          io.to(user.socketId).emit("getMessage", {
+            senderId,
+            text,
+            files: filesWithUrls,
+            createdAt: new Date(),
+          });
+        }
+      } catch (err) {
+        console.error("Socket message error:", err);
+      }
+    });
 
     // Handle typing status
     socket.on("typing", ({ receiverId }) => {
@@ -158,7 +165,9 @@ const getConversations = async (req, res) => {
 
     const conversations = await Conversation.find({
       members: id,
-    }).populate("members", "userName email _id profilePicture");
+    })
+    .populate("members", "userName email _id profilePicture")
+    .populate("lastMessage");
 
     if (!conversations || conversations.length === 0) {
       return res
@@ -182,7 +191,7 @@ const sendMessage = async (req, res) => {
     const files = req.files || [];
 
     // Validate either text or files must be present
-    if (!text && files.length === 0) {
+    if ((!text || text.trim() === '') && files.length === 0) {
       return res.status(400).json({ 
         message: "Either text or file is required" 
       });
@@ -193,18 +202,18 @@ const sendMessage = async (req, res) => {
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    // Handle file attachments
+    // Handle file attachments with normalized paths
     const fileAttachments = files.map(file => ({
       filename: file.originalname,
-      path: file.path,
+      path: file.path.replace(/\\/g, '/'), // Normalize path (replace Windows backslashes)
       mimetype: file.mimetype
     }));
 
     const newMessage = new Message({
       conversation: conversationId,
       sender: senderId,
-      text,
-      ...(files.length > 0 && { file: fileAttachments[0] }) // Store first file
+      text: text || "",
+      file: fileAttachments
     });
 
     const savedMessage = await newMessage.save();
@@ -220,28 +229,47 @@ const sendMessage = async (req, res) => {
     }
     await conversation.save();
 
+    // Prepare files with full URLs for response and socket
+    const filesWithUrls = savedMessage.file.map(file => ({
+      ...file.toObject(),
+      url: `${req.protocol}://${req.get('host')}/${file.path}`
+    }));
+
     // Emit message with file info
     const receiver = getUser(receiverId);
     if (receiver) {
       io.to(receiver.socketId).emit("getMessage", {
         senderId,
-        text,
-        file: savedMessage.file,
+        text: text || "",
+        files: filesWithUrls,
         messageId: savedMessage._id,
         createdAt: savedMessage.createdAt,
       });
     }
 
+    // Transform response to include URLs
+    const responseMessage = savedMessage.toObject();
+    responseMessage.file = filesWithUrls;
+
     return res.status(201).json({
       message: "Message sent successfully",
-      chat: savedMessage,
+      chat: responseMessage,
     });
   } catch (error) {
     console.error("Error sending message:", error);
+    
+    // Clean up any uploaded files if message creation fails
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        fs.unlink(file.path, (err) => {
+          if (err) console.error("Error deleting file:", err);
+        });
+      });
+    }
+    
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
 
 const getMessages = async (req, res) => {
   try {
@@ -257,12 +285,24 @@ const getMessages = async (req, res) => {
     }
 
     const messages = await Message.find({ conversation: id })
-      .populate("sender", "name email")
+      .populate("sender", "name email profilePicture")
       .sort({ createdAt: 1 });
+
+    // Transform messages to include full URLs for files
+    const messagesWithUrls = messages.map(message => {
+      const msg = message.toObject();
+      if (msg.file && msg.file.length > 0) {
+        msg.file = msg.file.map(file => ({
+          ...file,
+          url: `${req.protocol}://${req.get('host')}/${file.path}`
+        }));
+      }
+      return msg;
+    });
 
     return res.status(200).json({
       message: "Messages retrieved successfully",
-      messages,
+      messages: messagesWithUrls,
     });
   } catch (error) {
     console.error("Error fetching messages:", error);
@@ -284,7 +324,7 @@ const markMessagesAsRead = async (req, res) => {
     }
 
     // Ensure the user is a part of the conversation
-    if (!conversation.members.includes(userId)) {
+    if (!conversation.members.some(member => member.toString() === userId)) {
       return res.status(403).json({ message: "Unauthorized access" });
     }
 
@@ -294,12 +334,9 @@ const markMessagesAsRead = async (req, res) => {
       { $set: { read: true } }
     );
 
-    // Optionally, update the conversation's readBy status (if tracking per user)
-    // const userIndex = conversation.readBy.indexOf(userId);
-    // if (userIndex === -1) {
-    //   conversation.readBy.push(userId);
-    //   await conversation.save();
-    // }
+    // Update conversation read status
+    conversation.readStatus.set(userId, true);
+    await conversation.save();
 
     return res.status(200).json({ message: "Messages marked as read" });
   } catch (error) {
@@ -308,6 +345,38 @@ const markMessagesAsRead = async (req, res) => {
   }
 };
 
+// Delete message function (optional)
+const deleteMessage = async (req, res) => {
+  try {
+    const { messageId, userId } = req.params;
+    
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+    
+    // Check if user is the sender of the message
+    if (message.sender.toString() !== userId) {
+      return res.status(403).json({ message: "Unauthorized: Not the sender of this message" });
+    }
+    
+    // Delete associated files if they exist
+    if (message.file && message.file.length > 0) {
+      message.file.forEach(fileObj => {
+        fs.unlink(fileObj.path, (err) => {
+          if (err) console.error("Error deleting file:", err);
+        });
+      });
+    }
+    
+    await Message.findByIdAndDelete(messageId);
+    
+    return res.status(200).json({ message: "Message deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 
 module.exports = {
   initializeSocket,
@@ -316,4 +385,5 @@ module.exports = {
   getMessages,
   markMessagesAsRead,
   getConversations,
+  deleteMessage
 };

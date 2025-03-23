@@ -1,46 +1,56 @@
-import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
-import socketService from "../../../socketService";
-import ChatList from "./components/ChatList";
-import ChatHeader from "./components/ChatHeader";
-import MessageList from "./components/MessageList";
-import MessageInput from "./components/MessageInput";
-import EmptyState from "./components/EmptyState";
+"use client"
 
-const API_BASE_URL = "http://localhost:3000/api";
+import { useState, useEffect, useRef } from "react"
+import axios from "axios"
+import socketService from "../../../socketService"
+import ChatList from "./components/ChatList"
+import ChatHeader from "./components/ChatHeader"
+import MessageList from "./components/MessageList"
+import MessageInput from "./components/MessageInput"
+import EmptyState from "./components/EmptyState"
+import VideoCall from "./VideoCall"
+
+const API_BASE_URL = "http://localhost:3000/api"
 
 const Chat = () => {
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [currentChat, setCurrentChat] = useState(null);
-  const [chats, setChats] = useState([]);
-  const [userId, setUserId] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [error, setError] = useState(null);
-  const messageEndRef = useRef(null);
-  const typingTimeoutRef = useRef(null);
+  const [messages, setMessages] = useState([])
+  const [newMessage, setNewMessage] = useState("")
+  const [currentChat, setCurrentChat] = useState(null)
+  const [chats, setChats] = useState([])
+  const [userId, setUserId] = useState("")
+  const [isTyping, setIsTyping] = useState(false)
+  const [onlineUsers, setOnlineUsers] = useState([])
+  const [error, setError] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const messageEndRef = useRef(null)
+  const typingTimeoutRef = useRef(null)
+
+  // Video call states
+  const [callInProgress, setCallInProgress] = useState(false)
+  const [currentCall, setCurrentCall] = useState(null)
+  const [incomingCall, setIncomingCall] = useState(null)
+  const [isCallInitiator, setIsCallInitiator] = useState(false)
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("token")
     if (token) {
       try {
-        const decodedToken = JSON.parse(atob(token.split(".")[1]));
-        setUserId(decodedToken.id);
-        socketService.connect(decodedToken.id);
+        const decodedToken = JSON.parse(atob(token.split(".")[1]))
+        setUserId(decodedToken.id)
+        socketService.connect(decodedToken.id)
       } catch (error) {
-        console.error("Error initializing chat:", error);
-        setError("Authentication error. Please log in again.");
+        console.error("Error initializing chat:", error)
+        setError("Authentication error. Please log in again.")
       }
     }
 
     return () => {
-      socketService.disconnect();
-    };
-  }, []);
+      socketService.disconnect()
+    }
+  }, [])
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) return
 
     socketService.onMessage((data) => {
       if (currentChat && data.senderId === currentChat.userId) {
@@ -48,197 +58,383 @@ const Chat = () => {
           id: data.messageId || Date.now(),
           sender: "other",
           text: data.text,
+          files: data.files || [],
           timestamp: new Date(data.createdAt || Date.now()).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           }),
-        };
-        setMessages(prev => [...prev, newMsg]);
-        fetchConversations();
+        }
+        setMessages((prev) => [...prev, newMsg])
+        fetchConversations()
       } else {
-        fetchConversations();
+        fetchConversations()
       }
-    });
+    })
 
     socketService.onTyping(({ isTyping, userId: typingUserId }) => {
       if (currentChat && typingUserId === currentChat.userId) {
-        setIsTyping(isTyping);
+        setIsTyping(isTyping)
       }
-    });
+    })
 
     socketService.onUsersList((users) => {
-      setOnlineUsers(users);
-    });
+      setOnlineUsers(users)
+    })
 
-    fetchConversations();
-  }, [userId, currentChat]);
+    // Video call handlers
+    socketService.handleIncomingCall((data) => {
+      setIncomingCall({
+        callId: data.callId,
+        initiatorId: data.initiator,
+        conversationId: data.conversationId,
+      })
+    })
+
+    socketService.handleCallEnded(() => {
+      setCallInProgress(false)
+      setCurrentCall(null)
+      setIncomingCall(null)
+    })
+
+    fetchConversations()
+  }, [userId, currentChat])
 
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    socketService.handleVideoCallAccepted((data) => {
+      if (data.callId === currentCall?.callId) {
+        setCallInProgress(true)
+      }
+    })
+
+    return () => {
+      socketService.removeVideoListener("callAccepted")
+    }
+  }, [currentCall])
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
   const fetchConversations = async () => {
-    if (!userId) return;
-    
+    if (!userId) return
+
     try {
-      const response = await axios.get(
-        `${API_BASE_URL}/chat/getConversation/${userId}`
-      );
-      
+      const response = await axios.get(`${API_BASE_URL}/chat/getConversation/${userId}`)
+
       if (response.data && response.data.conversations) {
         const processedChats = await Promise.all(
           response.data.conversations.map(async (conversation) => {
-            const otherMember = conversation.members.find(
-              member => member._id !== userId
-            );
-            
-            let lastMessagePreview = "Start a conversation...";
-            let lastMessageTime = "Just now";
-            
+            const otherMember = conversation.members.find((member) => member._id !== userId)
+
+            let lastMessagePreview = "Start a conversation..."
+            let lastMessageTime = "Just now"
+
             if (conversation.lastMessage) {
               try {
-                const msgResponse = await axios.get(
-                  `${API_BASE_URL}/chat/getMessage/${conversation._id}`
-                );
-                const messages = msgResponse.data.messages;
+                const msgResponse = await axios.get(`${API_BASE_URL}/chat/getMessage/${conversation._id}`)
+                const messages = msgResponse.data.messages
                 if (messages && messages.length > 0) {
-                  const lastMsg = messages[messages.length - 1];
-                  lastMessagePreview = lastMsg.text.substring(0, 30) + 
-                    (lastMsg.text.length > 30 ? '...' : '');
+                  const lastMsg = messages[messages.length - 1]
+                  // Check if it's a file
+                  if (lastMsg.file && lastMsg.file.length > 0 && (!lastMsg.text || lastMsg.text.trim() === "")) {
+                    lastMessagePreview = "📎 Attachment"
+                  } else {
+                    lastMessagePreview = lastMsg.text.substring(0, 30) + (lastMsg.text.length > 30 ? "..." : "")
+                  }
                   lastMessageTime = new Date(lastMsg.createdAt).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
-                  });
+                  })
                 }
               } catch (err) {
-                console.error("Error fetching last message:", err);
+                console.error("Error fetching last message:", err)
               }
             }
 
-            const isOnline = onlineUsers.some(user => user.userId === otherMember._id);
-            
+            const isOnline = onlineUsers.some((user) => user.userId === otherMember._id)
+
             return {
               id: conversation._id,
               userId: otherMember._id,
               name: otherMember?.userName || "Unknown User",
               email: otherMember?.email || "",
-              profilePicture: otherMember?.profilePicture 
+              profilePicture: otherMember?.profilePicture
                 ? `${otherMember.profilePicture}`
                 : "https://via.placeholder.com/150?text=User",
               lastMessage: lastMessagePreview,
               time: lastMessageTime,
               isOnline,
-              readStatus: conversation.readStatus[userId] !== false
-            };
-          })
-        );
-        
-        setChats(processedChats);
+              readStatus: conversation.readStatus[userId] !== false,
+            }
+          }),
+        )
+
+        setChats(processedChats)
       }
     } catch (error) {
-      console.error("Error fetching conversations:", error);
-      setError("Failed to load conversations");
+      console.error("Error fetching conversations:", error)
+      setError("Failed to load conversations")
     }
-  };
+  }
 
   const handleChatSelect = async (selectedChat) => {
-    setCurrentChat(selectedChat);
-    setIsTyping(false);
-    
+    setCurrentChat(selectedChat)
+    setIsTyping(false)
+    setIsLoading(true)
+
     if (selectedChat?.id) {
       try {
-        const response = await axios.get(
-          `${API_BASE_URL}/chat/getMessage/${selectedChat.id}`
-        );
-        
+        const response = await axios.get(`${API_BASE_URL}/chat/getMessage/${selectedChat.id}`)
+
         if (response.data && response.data.messages) {
           const formattedMessages = response.data.messages.map((msg) => ({
             id: msg._id,
             sender: msg.sender._id === userId ? "me" : "other",
             text: msg.text,
+            files: msg.file,
             timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             }),
-          }));
-          setMessages(formattedMessages);
+          }))
+          setMessages(formattedMessages)
         }
+
+        // Mark messages as read
+        await axios.put(`${API_BASE_URL}/chat/changeStatus`, { conversationId: selectedChat.id, userId: userId })
       } catch (error) {
-        console.error("Error fetching messages:", error);
-        setError("Couldn't load messages");
+        console.error("Error fetching messages:", error)
+        setError("Couldn't load messages")
+      } finally {
+        setIsLoading(false)
       }
     }
-  };
+  }
 
-  const handleSendMessage = async () => {
-    if (newMessage.trim() === "" || !currentChat?.id) return;
+  const handleSendMessage = async (messageText, files = []) => {
+    if ((!messageText || messageText.trim() === "") && files.length === 0) return
+    if (!currentChat?.id) return
 
-    const messageText = newMessage.trim();
-    setNewMessage("");
+    const now = new Date()
+    const timestamp = now.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
 
+    // Create a temporary message to display immediately
     const tempMessage = {
-      id: Date.now().toString(),
+      id: `temp-${Date.now()}`,
       sender: "me",
-      text: messageText,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
+      text: messageText || "",
+      files: files.map((file) => ({
+        filename: file.name,
+        mimetype: file.type,
+        // Create a local preview URL
+        url: URL.createObjectURL(file),
+      })),
+      timestamp,
+    }
 
-    setMessages(prev => [...prev, tempMessage]);
+    setMessages((prev) => [...prev, tempMessage])
 
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/chat/sendMessage`,
-        {
-          conversationId: currentChat.id,
-          senderId: userId,
-          text: messageText,
-        }
-      );
-      
+      // Create FormData for the file upload
+      const formData = new FormData()
+      formData.append("conversationId", currentChat.id)
+      formData.append("senderId", userId)
+      formData.append("text", messageText || "")
+
+      // Append files if any
+      files.forEach((file) => {
+        formData.append("files", file)
+      })
+
+      const response = await axios.post(`${API_BASE_URL}/chat/sendMessage`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      })
+
       if (response.data?.chat) {
+        // Revoke temporary URLs to prevent memory leaks
+        if (tempMessage.files) {
+          tempMessage.files.forEach((file) => {
+            if (file.url) URL.revokeObjectURL(file.url)
+          })
+        }
+
+        // Update the message with the real data from the server
+        const updatedMessage = {
+          id: response.data.chat._id,
+          sender: "me",
+          text: response.data.chat.text,
+          files: response.data.chat.file,
+          timestamp,
+        }
+
+        setMessages((prev) => prev.map((msg) => (msg.id === tempMessage.id ? updatedMessage : msg)))
+
+        // Notify the other user through socket
         socketService.sendMessage({
           senderId: userId,
           receiverId: currentChat.userId,
-          text: messageText,
+          text: response.data.chat.text,
+          files: response.data.chat.file,
           messageId: response.data.chat._id,
-          createdAt: response.data.chat.createdAt
-        });
-        
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === tempMessage.id 
-              ? { ...msg, id: response.data.chat._id }
-              : msg
-          )
-        );
-        
-        fetchConversations();
+          createdAt: response.data.chat.createdAt,
+        })
+
+        fetchConversations()
       }
     } catch (error) {
-      console.error("Error sending message:", error);
-      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
-      setError("Failed to send message");
+      console.error("Error sending message:", error)
+
+      // Remove the temporary message if there was an error
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id))
+      setError("Failed to send message")
+
+      // Revoke temporary URLs
+      if (tempMessage.files) {
+        tempMessage.files.forEach((file) => {
+          if (file.url) URL.revokeObjectURL(file.url)
+        })
+      }
     }
-  };
+  }
 
   const handleTyping = (isTyping) => {
     if (currentChat?.userId) {
       if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+        clearTimeout(typingTimeoutRef.current)
       }
 
       if (isTyping) {
-        socketService.startTyping(currentChat.userId);
+        socketService.startTyping(currentChat.userId)
       }
 
       typingTimeoutRef.current = setTimeout(() => {
-        socketService.stopTyping(currentChat.userId);
-      }, 1000);
+        socketService.stopTyping(currentChat.userId)
+      }, 1000)
     }
-  };
+  }
+
+  // Video Call Handlers
+  const handleVideoCall = async () => {
+    if (!currentChat) return
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/video-call/initiateCall`, {
+        initiatorId: userId,
+        receiverId: currentChat.userId,
+        conversationId: currentChat.id,
+      })
+
+      const callId = response.data.call.callId
+
+      setCurrentCall({
+        callId: callId,
+        otherUser: currentChat,
+      })
+      setIsCallInitiator(true)
+      setCallInProgress(true)
+
+      // Track active call in socket service
+      socketService.setActiveCall(callId)
+
+      // Join the call room immediately as initiator
+      socketService.joinVideoCall(callId)
+    } catch (error) {
+      console.error("Error initiating video call:", error)
+      setError("Failed to start video call")
+    }
+  }
+
+  // Updated handleAcceptCall function in the Chat component
+
+// Updated handleAcceptCall function in the Chat component
+
+const handleAcceptCall = async () => {
+  try {
+    console.log("Accepting incoming call:", incomingCall);
+    
+    // Get call ID from the incoming call data
+    const callId = incomingCall.callId;
+    
+    // Find the chat/conversation with the caller
+    const relatedChat = chats.find((c) => c.id === incomingCall.conversationId);
+    
+    if (!relatedChat) {
+      console.error("Could not find chat related to incoming call");
+      setError("Failed to find caller information");
+      return;
+    }
+
+    console.log("Setting up call with:", relatedChat);
+    
+    // Set current call information
+    setCurrentCall({
+      callId: callId,
+      otherUser: relatedChat,
+    });
+    
+    // Set as non-initiator (receiver)
+    setIsCallInitiator(false);
+    
+    // Track active call in socket service - important for proper signaling
+    socketService.setActiveCall(callId);
+    
+    // CRITICAL: First join the call room BEFORE setting callInProgress to true
+    // This ensures the socket is ready to receive WebRTC signals
+    console.log("Joining video call room:", callId);
+    socketService.joinVideoCall(callId);
+    
+    // Short delay to ensure socket room join is processed
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Update call status to ongoing only after joining the room
+    await axios.put(`${API_BASE_URL}/video-call/updateStatus`, {
+      callId: callId,
+      status: "ongoing",
+    });
+    
+    // Let the initiator know we've accepted and joined
+    socketService.acceptCall({
+      callId: callId,
+      userId: userId,
+      acceptedBy: userId,
+    });
+    
+    console.log("Call accepted and ready to establish connection");
+    
+    // Clear incoming call dialog
+    setIncomingCall(null);
+    
+    // Now set the UI to show the call in progress - this will mount the VideoCall component
+    setCallInProgress(true);
+  } catch (error) {
+    console.error("Error accepting call:", error);
+    setError("Failed to accept call: " + error.message);
+  }
+};
+
+  const handleDeclineCall = async () => {
+    try {
+      await axios.put(`${API_BASE_URL}/video-call/updateStatus`, {
+        callId: incomingCall.callId,
+        status: "rejected",
+      })
+      setIncomingCall(null)
+    } catch (error) {
+      console.error("Error declining call:", error)
+      setError("Failed to decline call")
+    }
+  }
+
+  const handleEndCall = () => {
+    socketService.endCall(currentCall.callId)
+    setCallInProgress(false)
+    setCurrentCall(null)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -247,37 +443,36 @@ const Chat = () => {
           <h2 className="text-xl font-bold flex items-center">
             <span className="text-red-600">Train</span>
             <span>Tact</span>
-            <span className="ml-2 text-sm text-gray-500 font-normal">
-              Messages
-            </span>
+            <span className="ml-2 text-sm text-gray-500 font-normal">Messages</span>
           </h2>
         </div>
-        
-        <ChatList
-          error={error}
-          chats={chats}
-          currentChat={currentChat}
-          onChatSelect={handleChatSelect}
-        />
+
+        <ChatList error={error} chats={chats} currentChat={currentChat} onChatSelect={handleChatSelect} />
       </aside>
 
       <main className="flex-1 flex flex-col">
         {currentChat ? (
           <>
-            <ChatHeader 
-              chat={currentChat}
-              onBack={() => setCurrentChat(null)}
-            />
+            <div className="sticky top-0 z-10">
+              <ChatHeader chat={currentChat}  onlineUsers={onlineUsers} onBack={() => setCurrentChat(null)} onVideoCall={handleVideoCall} />
+            </div>
 
             <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-              <div className="max-w-3xl mx-auto">
-                <MessageList
-                  messages={messages}
-                  currentChat={currentChat}
-                  messageEndRef={messageEndRef}
-                  isTyping={isTyping}
-                />
-              </div>
+              {isLoading ? (
+                <div className="flex justify-center items-center h-full">
+                  <div className="animate-pulse text-gray-500">Loading messages...</div>
+                </div>
+              ) : (
+                <div className="max-w-3xl mx-auto">
+                  <MessageList
+                    messages={messages}
+                    currentChat={currentChat}
+                    messageEndRef={messageEndRef}
+                    isTyping={isTyping}
+
+                  />
+                </div>
+              )}
             </div>
 
             <footer className="bg-white p-4 border-t">
@@ -292,9 +487,42 @@ const Chat = () => {
         ) : (
           <EmptyState />
         )}
+
+        {/* Video Call Components */}
+        {callInProgress && (
+          <VideoCall
+            callId={currentCall.callId}
+            otherUser={currentCall.otherUser}
+            onEndCall={handleEndCall}
+            isInitiator={isCallInitiator}
+          />
+        )}
+
+        {incomingCall && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+            <div className="bg-white p-6 rounded-lg text-center">
+              <h2 className="text-xl font-bold mb-4">Incoming Video Call</h2>
+              <div className="flex gap-4 justify-center">
+                <button
+                  onClick={handleAcceptCall}
+                  className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={handleDeclineCall}
+                  className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition"
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
-  );
-};
+  )
+}
 
-export default Chat;
+export default Chat
+

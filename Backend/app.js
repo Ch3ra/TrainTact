@@ -25,7 +25,7 @@ const paymentRoutes = require("./routes/paymentRoute");
 const chatRoutes = require("./routes/chatRoute");
 
 // Ensure upload folders exist
-const paths = ["./uploads/profilePictures", "./uploads/resumes"];
+const paths = ["./uploads/profilePictures", "./uploads/resumes", "./uploads/chat"];
 paths.forEach((uploadPath) => {
   if (!fs.existsSync(uploadPath)) {
     fs.mkdirSync(uploadPath, { recursive: true });
@@ -42,7 +42,7 @@ app.use(cors());
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Socket.IO connection handling
+// Centralized user management for sockets
 let users = [];
 
 const addUser = (userId, socketId) => {
@@ -58,47 +58,36 @@ const getUser = (userId) => {
   return users.find((user) => user.userId === userId);
 };
 
+// Import controllers
+const chatController = require("./controller/chatController/chatController");
+const videoCallController = require("./controller/chatController/videoCallController");
+
+// Initialize sockets with shared user management
+chatController.initializeSocket(io);
+
+// Initialize video call socket with shared user management
+videoCallController.initializeVideoSocket(io, users);
+
+// Main Socket.IO connection handling
 io.on("connection", (socket) => {
-  console.log("A user connected");
+  console.log("A user connected:", socket.id);
 
   // Take userId and socketId from user
   socket.on("addUser", (userId) => {
     addUser(userId, socket.id);
+    // Update socket references in both controllers
+    videoCallController.setUsers(users);
+    
     io.emit("getUsers", users);
-  });
-
-  // Send and get message
-  socket.on("sendMessage", ({ senderId, receiverId, text }) => {
-    const user = getUser(receiverId);
-    if (user) {
-      io.to(user.socketId).emit("getMessage", {
-        senderId,
-        text,
-        createdAt: new Date(),
-      });
-    }
-  });
-
-  // When user is typing
-  socket.on("typing", ({ receiverId }) => {
-    const user = getUser(receiverId);
-    if (user) {
-      io.to(user.socketId).emit("typing", { isTyping: true });
-    }
-  });
-
-  // When user stops typing
-  socket.on("stopTyping", ({ receiverId }) => {
-    const user = getUser(receiverId);
-    if (user) {
-      io.to(user.socketId).emit("typing", { isTyping: false });
-    }
   });
 
   // User disconnects
   socket.on("disconnect", () => {
-    console.log("A user disconnected");
+    console.log("A user disconnected:", socket.id);
     removeUser(socket.id);
+    // Update socket references in both controllers
+    videoCallController.setUsers(users);
+    
     io.emit("getUsers", users);
   });
 });
@@ -117,18 +106,7 @@ app.use("/api/trainer", trainerRoutes);
 app.use("/api/client", clientRoutes);
 app.use("/api/availability", availabilityRoutes);
 app.use("/api/chat", chatRoutes);
-
-//this is of the solo video call
-
-// app.js (additions to your existing file)
-const videoCallRoutes = require("./routes/videoCallRoute");
-const videoCallController = require("./controller/chatController/videoCallController");
-
-// Add the video call routes
-app.use("/api/video-call", videoCallRoutes);
-
-// Initialize the video call socket service (assuming you already have socket.io set up)
-videoCallController.initializeVideoSocket(io);
+app.use("/api/video-call", require("./routes/videoCallRoute"));
 
 // Database connection
 const { connectDatabase } = require("./database/database");
@@ -140,4 +118,4 @@ server.listen(PORT, () => {
 });
 
 // Export io instance for use in other files
-module.exports = { io };
+module.exports = { io, users };

@@ -20,7 +20,7 @@ const videoCallSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["initiated", "ongoing", "completed", "missed", "rejected"],
+      enum: ["initiated", "ringing", "ongoing", "completed", "missed", "rejected"],
       default: "initiated"
     },
     startTime: {

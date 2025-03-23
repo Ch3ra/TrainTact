@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { AlertCircle } from "lucide-react";
+import { jwtDecode } from "jwt-decode";
 
 // Set base URL for Axios
 const api = axios.create({
@@ -8,16 +9,30 @@ const api = axios.create({
 });
 
 const ChatList = ({ error, chats, currentChat, onChatSelect }) => {
+  const getProfilePictureUrl = (chat) => {
+    if (!chat.profilePicture) return "/default-avatar.png"; // Fallback image
+    
+    try {
+      // If the profile picture already has the complete URL, return it as is
+      if (chat.profilePicture.startsWith("http")) {
+        return chat.profilePicture;
+      }
+      
+      // Otherwise, add the base URL
+      return `http://localhost:3000/uploads/profilePictures/${chat.profilePicture}`;
+    } catch (error) {
+      console.error("Error processing profile picture URL:", error);
+      return chat.profilePicture;
+    }
+  };
 
-  console.log(chats)
   const handleChatSelect = async (chat) => {
     try {
-
       if (!chat.readStatus) {
-        await api.put("/changeStatus", { conversationId: chat.id, userId: chat.userId});
+        await api.put("/changeStatus", { conversationId: chat.id, userId: chat.userId });
       }
       onChatSelect(chat);
-    } catch (error) { 
+    } catch (error) {
       console.error("Error updating read status:", error);
     }
   };
@@ -53,7 +68,7 @@ const ChatList = ({ error, chats, currentChat, onChatSelect }) => {
           <div className="flex items-start space-x-3">
             <div className="relative">
               <img
-                src={chat.profilePicture}
+                src={getProfilePictureUrl(chat)}
                 alt={chat.name}
                 className="w-12 h-12 rounded-full object-cover"
               />

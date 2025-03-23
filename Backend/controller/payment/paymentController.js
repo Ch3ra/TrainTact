@@ -1,10 +1,6 @@
  // Add at top
 const axios = require('axios');
 
-const { parseString } = require('xml2js');
-
-
-
 //khalti Payment initiation
 exports.initiateKhaltiPayment = async (req, res) => {
     try {
