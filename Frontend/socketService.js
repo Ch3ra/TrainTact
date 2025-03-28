@@ -9,6 +9,19 @@ class SocketService {
     this.listeners = new Map()
     this.videoListeners = new Map()
     this.activeCallId = null
+    this.notificationListeners = new Map()
+  }
+
+  // ==================== Notification Methods ====================
+  onNewNotification(callback) {
+    this._addNotificationListener("newNotification", callback)
+    // Also listen for the alternative event name
+    this._addNotificationListener("getNotification", callback)
+  }
+
+  sendNotification(data) {
+    if (!this.socket) return
+    this.socket.emit("sendNotification", data)
   }
 
   // ==================== Video Call Methods ====================
@@ -80,7 +93,7 @@ class SocketService {
       from: data.from || this.userId,
     }
 
-    console.log(`Sending ${type} signal to: ${data.to || 'call room'}, from: ${payload.from}`)
+    console.log(`Sending ${type} signal to: ${data.to || "call room"}, from: ${payload.from}`)
     this.socket.emit(type, payload)
   }
 
@@ -196,7 +209,7 @@ class SocketService {
     if (!this.socket) return
     // First remove any existing listener to prevent duplicates
     this.removeListener(eventName)
-    
+
     const listener = (data) => {
       try {
         callback(data)
@@ -212,7 +225,7 @@ class SocketService {
     if (!this.socket) return
     // First remove any existing listener to prevent duplicates
     this.removeVideoListener(eventName)
-    
+
     const listener = (data) => {
       try {
         callback(data)
@@ -222,6 +235,22 @@ class SocketService {
     }
     this.socket.on(eventName, listener)
     this.videoListeners.set(eventName, listener)
+  }
+
+  _addNotificationListener(eventName, callback) {
+    if (!this.socket) return
+    // First remove any existing listener to prevent duplicates
+    this.removeNotificationListener(eventName)
+
+    const listener = (data) => {
+      try {
+        callback(data)
+      } catch (error) {
+        console.error(`Error handling notification event ${eventName}:`, error)
+      }
+    }
+    this.socket.on(eventName, listener)
+    this.notificationListeners.set(eventName, listener)
   }
 
   removeListener(eventName) {
@@ -235,6 +264,13 @@ class SocketService {
     if (this.socket && this.videoListeners.has(eventName)) {
       this.socket.off(eventName, this.videoListeners.get(eventName))
       this.videoListeners.delete(eventName)
+    }
+  }
+
+  removeNotificationListener(eventName) {
+    if (this.socket && this.notificationListeners.has(eventName)) {
+      this.socket.off(eventName, this.notificationListeners.get(eventName))
+      this.notificationListeners.delete(eventName)
     }
   }
 

@@ -42,6 +42,11 @@ const workoutScheduleSchema = new mongoose.Schema({
     amount:{
         type:Number,
         default:0,
+    },
+    status: {
+        type: String,
+        enum: ['upcoming', 'ongoing', 'completed', 'cancelled'],
+        default: 'upcoming',
     }
     
 });
