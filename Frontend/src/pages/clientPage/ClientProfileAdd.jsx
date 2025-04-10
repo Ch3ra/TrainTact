@@ -2,23 +2,60 @@ import React, { useState, useEffect } from 'react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { ArrowLeft } from 'lucide-react';
-import { useNavigate} from 'react-router-dom';
-
+import { useNavigate } from 'react-router-dom';
 
 const ClientProfileAdd = () => {
-  
   const [previewImg, setPreviewImg] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [description, setDescription] = useState(""); // State to store the user ID
+  const [description, setDescription] = useState("");
   const navigate = useNavigate();
 
+  // Authentication check when component mounts
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      setUserId(decodedToken.id); // Setting userId in state
-    }
-  }, []);
+    const checkAuth = () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found");
+        navigate('/authentication');
+        return false;
+      }
+      
+      try {
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token:", decodedToken);
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType;
+        
+        console.log("Detected user role:", userRole);
+        
+        // Check if user is a client - be flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'client') {
+          console.log("Access denied: User is not a client");
+          navigate('/authentication');
+          return false;
+        }
+        
+        // User is a client, set userId and continue
+        setUserId(decodedToken.id);
+        return true;
+      } catch (error) {
+        console.error("Failed to decode token", error);
+        console.error("Token content:", token);
+        navigate('/authentication');
+        return false;
+      }
+    };
+    
+    // Run auth check
+    checkAuth();
+  }, [navigate]);
 
   const handleDescriptionChange = (value) => {
     setDescription(value);
@@ -45,7 +82,7 @@ const ClientProfileAdd = () => {
     formData.append('weight', e.target.weight.value);
     formData.append('fitnessLevel', e.target.fitnessLevel.value);
     formData.append('location', e.target.location.value);
-    formData.append('description',description);
+    formData.append('description', description);
 
     fetch(`http://localhost:3000/api/client/${userId}`, {
       method: 'POST',
@@ -212,8 +249,3 @@ const ClientProfileAdd = () => {
 };
 
 export default ClientProfileAdd;
-
-
-
-
-

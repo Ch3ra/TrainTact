@@ -9,8 +9,11 @@ const getAllTrainers = async (req, res) => {
   try {
     const BASE_URL = `${process.env.BASE_URL || "http://localhost:3000"}/uploads/profilePictures/`;
 
-    // Fetch all trainers and populate the 'user' field
-    const trainers = await Trainer.find().populate("user");
+    // Fetch all trainers and populate the 'user' field with age included
+    const trainers = await Trainer.find().populate({
+      path: "user",
+      select: "userName email profilePicture location age isOtpVerified"
+    });
 
     // Filter trainers where a user exists and OTP has not been verified
     const filteredTrainers = trainers.filter(
@@ -18,15 +21,20 @@ const getAllTrainers = async (req, res) => {
     );
 
     // Map through the filtered trainers to prepare data with absolute URLs for profile pictures
+    // and ensure bibliography and resume are included
     const trainersData = filteredTrainers.map((trainer) => ({
       ...trainer._doc,
+      bibliography: trainer.bibliography || "No bibliography provided", 
+      resume: trainer.resume || trainer.bibliography || "No resume provided", // Include resume
       user: {
         ...trainer.user._doc,
         profilePicture: trainer.user.profilePicture
           ? `${BASE_URL}${trainer.user.profilePicture}`
-          : `${BASE_URL}default.png`, // Fallback to default image if profile picture is not available
-      },
+          : `${BASE_URL}default.png` // Fallback to default image if profile picture is not available
+      }
     }));
+
+    console.log("Trainer data including age, bibliography and resume:", trainersData);
 
     res.status(200).json({
       success: true,
@@ -143,7 +151,7 @@ const updateOtpVerification = async (req, res) => {
         
 Congratulations! Your account has been successfully verified. You can now log in to your Traintact account and explore our platform.
 
-We’re thrilled to have you onboard!
+We're thrilled to have you onboard!
 
 Best regards,  
 Traintact Team`,
@@ -165,8 +173,6 @@ Traintact Team`,
   }
 };
 
-
-
 const getTrainerDetails = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -186,14 +192,15 @@ const getTrainerDetails = async (req, res) => {
     const response = {
       message: "Trainer profile fetched successfully.",
       trainer: {
-        
         userName: trainer.user.userName,
         email: trainer.user.email,
-        
+        age: trainer.user.age, // Include age
         profilePicture: trainer.user.profilePicture,
         fitnessGoal: trainer.user.fitnessGoal,
         location: trainer.user.location,
         yearsOfExperience: trainer.yearsOfExperience,
+        bibliography: trainer.bibliography, // Include bibliography
+        resume: trainer.resume || trainer.bibliography || "", // Add resume with fallback to bibliography
         price: trainer.price,
         availabilityHours: trainer.availabilityHours,
         description: trainer.description,
@@ -216,11 +223,21 @@ const createOrUpdateTrainer = async (req, res) => {
   const {
       price, availabilityHours, description,
       fitnessGoal, location, startDay, endDay,
-      advancedNeeded
+      advancedNeeded, bibliography, resume, age // Added resume field
   } = req.body;
 
+  console.log("CreateOrUpdateTrainer request body:", req.body);
+  console.log("CreateOrUpdateTrainer files:", req.files);
 
-  const coverPhoto = req.file ? req.file.filename : null;
+  // Handle file uploads - now using req.files since we're using upload.fields
+  const coverPhoto = req.files?.coverPhoto?.[0]?.filename || null;
+  const resumeFile = req.files?.resume?.[0]?.filename || null;
+
+  // Determine resume value - prioritize file upload over form field
+  const resumeValue = resumeFile || resume || "";
+
+  console.log("Resume value determined:", resumeValue);
+  console.log("Cover photo:", coverPhoto);
 
   try {
       const user = await User.findById(userId);
@@ -228,6 +245,13 @@ const createOrUpdateTrainer = async (req, res) => {
           return res.status(404).json({ message: "Trainer not found or user is not a trainer." });
       }
 
+      // Update user fields
+      user.fitnessGoal = fitnessGoal;
+      user.location = location;
+      if (age) user.age = age; // Update age if provided
+      await user.save();
+
+      // Update or create trainer fields
       let trainer = await Trainer.findOne({ user: userId });
       if (trainer) {
           trainer.price = price;
@@ -236,7 +260,11 @@ const createOrUpdateTrainer = async (req, res) => {
           trainer.startDay = startDay;
           trainer.endDay = endDay;
           trainer.advancedNeeded = advancedNeeded === 'true' || advancedNeeded === true;
+          if (bibliography) trainer.bibliography = bibliography; // Update bibliography if provided
+          if (resumeValue) trainer.resume = resumeValue; // Update resume if provided
           if (coverPhoto) trainer.coverPhoto = coverPhoto;
+          
+          console.log("Updating existing trainer with resume:", trainer.resume);
           await trainer.save();
       } else {
           trainer = await Trainer.create({
@@ -247,17 +275,19 @@ const createOrUpdateTrainer = async (req, res) => {
               startDay,
               endDay,
               coverPhoto,
+              bibliography: bibliography || "", // Include bibliography
+              resume: resumeValue, // Include resume
               advancedNeeded: advancedNeeded === 'true' || advancedNeeded === true
           });
+          console.log("Created new trainer with resume:", trainer.resume);
       }
-
-      user.fitnessGoal = fitnessGoal;
-      user.location = location;
-      await user.save();
 
       res.status(200).json({
           message: "Trainer profile updated successfully",
-          trainer,
+          trainer: {
+              ...trainer.toObject(),
+              resume: trainer.resume // Explicitly include resume in the response
+          },
           user
       });
   } catch (error) {
@@ -266,9 +296,6 @@ const createOrUpdateTrainer = async (req, res) => {
   }
 };
 
-
-
-//yo banauna baki yesko multer ko jot xa haii!!
 const updateTrainerDetails = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -278,6 +305,9 @@ const updateTrainerDetails = async (req, res) => {
       fitnessGoal,
       location,
       yearsOfExperience,
+      bibliography, 
+      resume, // Text resume from form
+      age,
       price,
       availabilityTime,
       description,
@@ -286,12 +316,18 @@ const updateTrainerDetails = async (req, res) => {
     } = req.body;
 
     // Log incoming data for debugging
-    console.log("Body:", req.body);
-    console.log("Files:", req.files);
+    console.log("Update Trainer Details - Body:", req.body);
+    console.log("Update Trainer Details - Files:", req.files);
 
     // Handle file uploads
     const coverPhoto = req.files?.coverPhoto?.[0]?.filename;
     const profilePicture = req.files?.profilePicture?.[0]?.filename;
+    const resumeFile = req.files?.resume?.[0]?.filename;
+
+    // Determine resume value - prioritize file over form field
+    const resumeValue = resumeFile || resume;
+    
+    console.log("Resume value determined:", resumeValue);
 
     // Find user and validate
     const user = await User.findById(userId);
@@ -304,6 +340,7 @@ const updateTrainerDetails = async (req, res) => {
     if (email !== undefined) user.email = email;
     if (fitnessGoal !== undefined) user.fitnessGoal = fitnessGoal;
     if (location !== undefined) user.location = location;
+    if (age !== undefined) user.age = age; // Add age update
     if (profilePicture !== undefined) user.profilePicture = profilePicture;
     await user.save();
 
@@ -313,6 +350,11 @@ const updateTrainerDetails = async (req, res) => {
 
     // Update trainer fields only if provided
     if (yearsOfExperience !== undefined) trainer.yearsOfExperience = yearsOfExperience;
+    if (bibliography !== undefined) trainer.bibliography = bibliography;
+    if (resumeValue !== undefined) {
+      trainer.resume = resumeValue;
+      console.log("Setting resume to:", resumeValue);
+    }
     if (price !== undefined) trainer.price = price;
     if (availabilityTime !== undefined) trainer.availabilityTime = availabilityTime;
     if (description !== undefined) trainer.description = description;
@@ -326,11 +368,16 @@ const updateTrainerDetails = async (req, res) => {
 
     await trainer.save();
 
+    // Double-check that the trainer was saved with the resume
+    const savedTrainer = await Trainer.findOne({ user: userId });
+    console.log("Saved trainer resume:", savedTrainer.resume);
+
     res.status(200).json({
       message: "Profile updated successfully",
       profile: {
         ...user.toObject(),
-        ...trainer.toObject()
+        ...trainer.toObject(),
+        resume: trainer.resume || "" // Explicitly include resume in the response
       }
     });
 
@@ -343,18 +390,16 @@ const updateTrainerDetails = async (req, res) => {
   }
 };
 
-
-
-//client Dash Trainer Showing
-const getCompleteProfiles =async (req, res) => {
+// Client Dash Trainer Showing
+const getCompleteProfiles = async (req, res) => {
   try {
     const BASE_URL = `${process.env.BASE_URL || "http://localhost:3000"}/uploads/profilePictures/`;
     console.log("BASE_URL:", BASE_URL);
 
-    // Fetch all trainers
+    // Fetch all trainers with user information including age
     const trainers = await Trainer.find({}).populate({
       path: 'user',
-      select: 'userName profilePicture fitnessGoal'
+      select: 'userName profilePicture fitnessGoal age location'
     });
 
     console.log("Raw Trainer Data:", trainers);
@@ -372,10 +417,15 @@ const getCompleteProfiles =async (req, res) => {
     }
 
     const trainersData = completeTrainers.map(trainer => ({
-      
-      ID : trainer.user && trainer.user.id,
+      ID: trainer.user && trainer.user._id,
       username: trainer.user ? trainer.user.userName : 'No username',
       fitnessGoal: trainer.user ? trainer.user.fitnessGoal : 'No fitnessGoal',
+      location: trainer.user ? trainer.user.location : 'Location not specified',
+      age: trainer.user ? trainer.user.age : 'Age not provided',
+      price: trainer.price || null,
+      advancedNeeded: trainer.advancedNeeded || false,
+      bibliography: trainer.bibliography || 'No bibliography provided',
+      resume: trainer.resume || trainer.bibliography || 'No resume provided',
       profilePicture: trainer.user && trainer.user.profilePicture
         ? (trainer.user.profilePicture.startsWith('http') 
             ? trainer.user.profilePicture 
@@ -400,6 +450,123 @@ const getCompleteProfiles =async (req, res) => {
 };
 
 
+// Get all verified trainers with dynamic status based on workout sessions
+const getVerifiedTrainers = async (req, res) => {
+  try {
+    const BASE_URL = `${process.env.BASE_URL || "http://localhost:3000"}/uploads/profilePictures/`;
+
+    // Step 1: Fetch all trainers with OTP verified flag and populate the 'user' field
+    const trainers = await Trainer.find().populate({
+      path: "user",
+      select: "userName email profilePicture location age isOtpVerified"
+    });
+
+    console.log("Total trainers found:", trainers.length);
+    
+    // Step 2: Filter out trainers without user data or with unverified users
+    // but still keep them in the response for the frontend to filter as needed
+    const filteredTrainers = trainers.filter(trainer => trainer && trainer.user);
+    
+    // Step 3: Prepare to fetch workout schedules for all trainers
+    const trainerUserIds = filteredTrainers.map(trainer => trainer.user._id);
+    
+    // Step 4: Fetch all workout schedules for these trainers
+    const WorkoutSchedule = mongoose.model('WorkoutSchedule');
+    const allWorkoutSchedules = await WorkoutSchedule.find({
+      trainerId: { $in: trainerUserIds }
+    });
+    
+    console.log(`Found ${allWorkoutSchedules.length} workout schedules for ${trainerUserIds.length} trainers`);
+    
+    // Step 5: Group workout schedules by trainer
+    const schedulesByTrainer = {};
+    allWorkoutSchedules.forEach(schedule => {
+      const trainerId = schedule.trainerId.toString();
+      if (!schedulesByTrainer[trainerId]) {
+        schedulesByTrainer[trainerId] = [];
+      }
+      schedulesByTrainer[trainerId].push(schedule);
+    });
+    
+    // Step 6: Process each trainer and determine their status
+    const trainersData = await Promise.all(filteredTrainers.map(async (trainer) => {
+      const trainerUserId = trainer.user._id.toString();
+      const trainerSchedules = schedulesByTrainer[trainerUserId] || [];
+      
+      // Determine trainer status based on their workout schedules
+      // Active if they have any upcoming or ongoing sessions
+      const hasActiveSession = trainerSchedules.some(
+        schedule => schedule.status === 'upcoming' || schedule.status === 'ongoing'
+      );
+      
+      // Determine if all schedules are completed or cancelled
+      const allSessionsInactive = trainerSchedules.length > 0 && 
+        trainerSchedules.every(
+          schedule => schedule.status === 'completed' || schedule.status === 'cancelled'
+        );
+      
+      // Set status based on schedule statuses
+      let status = "inactive";
+      if (hasActiveSession) {
+        status = "active";
+      } else if (allSessionsInactive) {
+        status = "inactive";
+      } else if (trainerSchedules.length === 0) {
+        // No schedules - default inactive
+        status = "inactive";
+      }
+      
+      // Count sessions by status for additional information
+      const sessionCounts = {
+        upcoming: trainerSchedules.filter(s => s.status === 'upcoming').length,
+        ongoing: trainerSchedules.filter(s => s.status === 'ongoing').length,
+        completed: trainerSchedules.filter(s => s.status === 'completed').length,
+        cancelled: trainerSchedules.filter(s => s.status === 'cancelled').length,
+        total: trainerSchedules.length
+      };
+      
+      return {
+        _id: trainer._id,
+        yearsOfExperience: trainer.yearsOfExperience || 0,
+        bibliography: trainer.bibliography || "No bibliography provided",
+        resume: trainer.resume || trainer.bibliography || "No resume provided", // Include resume with fallback
+        clientCount: sessionCounts.total || 0, // Use session count as client count
+        rating: 0, // Placeholder for rating
+        specialty: trainer.description || "General Training",
+        createdAt: trainer.createdAt,
+        status, // Dynamic status based on sessions
+        sessionCounts, // Include session counts for reference
+        user: {
+          _id: trainer.user._id,
+          userName: trainer.user.userName || "Unnamed Trainer",
+          email: trainer.user.email || "No email",
+          age: trainer.user.age || "Not specified",
+          location: trainer.user.location || "No location", 
+          isOtpVerified: trainer.user.isOtpVerified || false,
+          profilePicture: trainer.user.profilePicture
+            ? `${BASE_URL}${trainer.user.profilePicture}`
+            : `${BASE_URL}default.png`
+        }
+      };
+    }));
+
+    console.log("Transformed trainers data:", trainersData.length);
+
+    res.status(200).json({
+      success: true,
+      message: "Fetched trainers successfully",
+      data: trainersData,
+    });
+  } catch (error) {
+    console.error("Error fetching trainers:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch trainers",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = { 
   getAllTrainers, 
   deleteTrainer, 
@@ -407,6 +574,6 @@ module.exports = {
   getTrainerDetails,
   createOrUpdateTrainer,
   updateTrainerDetails,
-  getCompleteProfiles
+  getCompleteProfiles,
+  getVerifiedTrainers
 };
-

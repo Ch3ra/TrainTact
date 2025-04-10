@@ -26,7 +26,7 @@ const ChatHeader = ({ chat, onBack, onVideoCall, onlineUsers }) => {
   }
 
   return (
-    <header className="bg-white p-4 border-b flex items-center justify-between">
+    <header className="bg-gray-200 p-4 border-b flex items-center justify-between">
       <div className="flex items-center space-x-3">
         <button className="md:hidden" onClick={onBack}>
           <ArrowLeft className="w-5 h-5" />

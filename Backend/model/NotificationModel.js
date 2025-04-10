@@ -13,7 +13,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['schedule_request', 'schedule_accepted', 'schedule_cancelled', 'system', 'new_rating'],
+    enum: ['schedule_request', 'schedule_accepted', 'schedule_cancelled', 'system', 'new_rating', 'booking', 'payment', 'message', 'review'],
     required: true
   },
   title: {
@@ -23,6 +23,11 @@ const notificationSchema = new mongoose.Schema({
   message: {
     type: String,
     required: true
+  },
+  priority: {
+    type: String,
+    enum: ['high', 'medium', 'low'],
+    default: 'medium'
   },
   relatedSchedule: {
     type: mongoose.Schema.Types.ObjectId,
@@ -40,5 +45,7 @@ const notificationSchema = new mongoose.Schema({
 
 // Index for faster queries
 notificationSchema.index({ recipient: 1, read: 1, createdAt: -1 });
+notificationSchema.index({ recipient: 1, type: 1 });
+notificationSchema.index({ recipient: 1, priority: 1 });
 
 module.exports = mongoose.model('Notification', notificationSchema);

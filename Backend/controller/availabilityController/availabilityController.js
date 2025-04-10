@@ -4,7 +4,6 @@ const User = require("../../model/userModel")
 const cron = require("node-cron")
 const notificationController = require("../notification/NotificationController")
 
-
 const updateWorkoutStatuses = async () => {
   const now = new Date()
   console.log("Running status update job at:", now.toISOString())
@@ -54,7 +53,7 @@ const convertTimeToMinutes = (timeStr) => {
 }
 
 exports.createSchedule = async (req, res) => {
-  const { clientId, trainerId, startTime, duration, startDate, endDate, message, paymentStatus } = req.body
+  const { clientId, trainerId, startTime, duration, startDate, endDate, message, paymentStatus, amount } = req.body
 
   if (!clientId || !trainerId || !startTime || !duration || !startDate || !endDate) {
     return res.status(400).send("Please provide all required fields.")
@@ -124,6 +123,10 @@ exports.createSchedule = async (req, res) => {
 
     console.log("Setting initial status to:", initialStatus)
 
+    // Generate a unique booking number
+    const bookingCount = await WorkoutSchedule.countDocuments()
+    const bookingNumber = `BOOK-${String(bookingCount + 1).padStart(5, '0')}`
+
     // Create new schedule if no conflicts
     const schedule = new WorkoutSchedule({
       clientId,
@@ -133,34 +136,26 @@ exports.createSchedule = async (req, res) => {
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       message,
-      paymentStatus,
+      paymentStatus: paymentStatus || "pending",
       status: initialStatus,
+      amount: amount || 0, // Set the amount from the request or default to 0
+      bookingNumber, // Add the booking number
+      isClientVerified: false, // Default to false until payment is verified
     })
 
     await schedule.save()
 
-    // Get client and trainer details for notification
-    const [client, trainer] = await Promise.all([User.findById(clientId), User.findById(trainerId)])
-
-    // Create notification for trainer
-    if (client && trainer) {
-      try {
-        console.log("Attempting to create notification for trainer")
-        const notificationData = {
-          recipient: trainerId,
-          sender: clientId,
-          type: "schedule_request",
-          title: "New Training Request",
-          message: `You have a new training request from ${client.userName}! They're excited to train with you starting on ${new Date(startDate).toLocaleDateString()}.`,
-          relatedSchedule: schedule._id,
-        }
-
-        const notification = await notificationController.createNotification(notificationData)
-        console.log("Notification created successfully:", notification ? notification._id : "Failed")
-      } catch (error) {
-        console.error("Error creating notification:", error)
-        // Continue with the response even if notification fails
-      }
+    // Send notifications for the new booking
+    try {
+      await notificationController.notifyNewBooking(
+        schedule._id,
+        clientId,
+        trainerId
+      )
+      console.log("Booking notifications sent successfully")
+    } catch (notificationError) {
+      console.error("Error sending booking notifications:", notificationError)
+      // Continue with the response even if notification fails
     }
 
     res.status(201).json({
@@ -260,125 +255,99 @@ exports.getTrainerBookings = async (req, res) => {
     res.status(500).send("Server error: " + error.message)
   }
 }
-
+// For the verifyBooking function (acceptance endpoint)
 exports.verifyBooking = async (req, res) => {
   try {
-    const booking = await WorkoutSchedule.findById(req.params.bookingId)
-    if (!booking) return res.status(404).json({ message: "Booking not found." })
-
-    booking.isClientVerified = true
-    await booking.save()
-
-    const { trainerId, clientId } = booking
+    const booking = await WorkoutSchedule.findById(req.params.bookingId);
+    if (!booking) return res.status(404).json({ message: "Booking not found." });
+    
+    // Mark as verified for acceptance
+    booking.isClientVerified = true;
+    await booking.save();
+    
+    const { trainerId, clientId } = booking;
     if (!trainerId || !clientId) {
-      return res.status(400).json({ message: "Missing user IDs for conversation." })
+      return res.status(400).json({ message: "Missing user IDs for conversation." });
     }
 
-    const [trainer, client] = await Promise.all([User.findById(trainerId), User.findById(clientId)])
-
-    if (!trainer || !client) {
-      return res.status(404).json({ message: "One or both users not found." })
-    }
-
-    // Create notification for client that booking is accepted
+    // Send notification that booking is accepted
     try {
-      console.log("Attempting to create acceptance notification for client")
-      const notificationData = {
-        recipient: clientId,
-        sender: trainerId,
-        type: "schedule_accepted",
-        title: "Training Request Accepted",
-        message: `Great news! ${trainer.userName} has accepted your training request. Your session is confirmed and we're looking forward to helping you achieve your fitness goals!`,
-        relatedSchedule: booking._id,
-      }
-
-      const notification = await notificationController.createNotification(notificationData)
-      console.log("Acceptance notification created successfully:", notification ? notification._id : "Failed")
-    } catch (error) {
-      console.error("Error creating acceptance notification:", error)
+      await notificationController.notifyBookingResponse(
+        booking._id.toString(),
+        clientId,
+        trainerId,
+        true // isAccepted = true
+      );
+      console.log("Booking acceptance notification sent successfully");
+    } catch (notificationError) {
+      console.error("Error sending booking acceptance notification:", notificationError);
       // Continue with the response even if notification fails
     }
 
     const existingConversation = await Conversation.findOne({
       members: { $all: [trainerId, clientId] },
-    })
+    });
 
     if (existingConversation) {
       return res.status(200).json({
         message: "Conversation already exists",
         conversation: existingConversation,
-      })
+      });
     }
 
-    const newConversation = new Conversation({ members: [trainerId, clientId] })
-    const savedConversation = await newConversation.save()
+    const newConversation = new Conversation({ members: [trainerId, clientId] });
+    const savedConversation = await newConversation.save();
 
     return res.status(201).json({
       message: "Client verified and conversation created!",
       conversation: savedConversation,
-    })
+    });
   } catch (error) {
-    console.error("Error verifying client:", error)
-    res.status(500).send("Server error: " + error.message)
+    console.error("Error verifying client:", error);
+    res.status(500).send("Server error: " + error.message);
   }
-}
+};
 
+// For the deleteBooking function (decline endpoint)
 exports.deleteBooking = async (req, res) => {
   try {
-    const booking = await WorkoutSchedule.findById(req.params.bookingId)
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found." })
+    const booking = await WorkoutSchedule.findById(req.params.bookingId);
+    if (!booking) return res.status(404).json({ message: "Booking not found." });
+    
+    // Store the necessary information before deleting
+    const bookingId = booking._id.toString();
+    const trainerId = booking.trainerId;
+    const clientId = booking.clientId;
+    
+    if (!trainerId || !clientId) {
+      return res.status(400).json({ message: "Missing user IDs for notification." });
     }
-
-    // Get client and trainer details for notification
-    const [client, trainer] = await Promise.all([User.findById(booking.clientId), User.findById(booking.trainerId)])
-
-    // Create notification about booking deletion
-    if (client && trainer) {
-      // Determine who is deleting the booking based on the token
-      const isClientDeleting = req.user && req.user.id === booking.clientId.toString()
-
-      try {
-        console.log("Attempting to create cancellation notification")
-        if (isClientDeleting) {
-          // Client is cancelling, notify trainer
-          const notificationData = {
-            recipient: booking.trainerId,
-            sender: booking.clientId,
-            type: "schedule_cancelled",
-            title: "Training Session Cancelled",
-            message: `${client.userName} has cancelled the training session scheduled for ${new Date(booking.startDate).toLocaleDateString()}. Please check your schedule for updates.`,
-            relatedSchedule: booking._id,
-          }
-
-          await notificationController.createNotification(notificationData)
-        } else {
-          // Trainer is cancelling, notify client
-          const notificationData = {
-            recipient: booking.clientId,
-            sender: booking.trainerId,
-            type: "schedule_cancelled",
-            title: "Training Session Cancelled",
-            message: `${trainer.userName} has cancelled the training session scheduled for ${new Date(booking.startDate).toLocaleDateString()}. Please contact them for more information or to reschedule.`,
-            relatedSchedule: booking._id,
-          }
-
-          await notificationController.createNotification(notificationData)
-        }
-        console.log("Cancellation notification created successfully")
-      } catch (error) {
-        console.error("Error creating cancellation notification:", error)
-        // Continue with the response even if notification fails
-      }
+    
+    // Send decline notification first
+    try {
+      await notificationController.notifyBookingResponse(
+        bookingId,
+        clientId,
+        trainerId,
+        false // isAccepted = false
+      );
+      console.log("Booking decline notification sent successfully");
+    } catch (notificationError) {
+      console.error("Error sending booking decline notification:", notificationError);
+      // Continue with deletion even if notification fails
     }
-
-    const deletedBooking = await WorkoutSchedule.findByIdAndDelete(req.params.bookingId)
-    res.status(200).json({ message: "Booking deleted successfully!", deletedBooking })
+    
+    // Delete the booking
+    await WorkoutSchedule.findByIdAndDelete(bookingId);
+    
+    return res.status(200).json({
+      message: "Booking declined successfully",
+    });
   } catch (error) {
-    console.error("Error deleting booking:", error)
-    res.status(500).send("Server error: " + error.message)
+    console.error("Error declining booking:", error);
+    res.status(500).send("Server error: " + error.message);
   }
-}
+};
 
 exports.getWorkoutStatus = async (req, res) => {
   try {
@@ -429,46 +398,22 @@ exports.cancelBooking = async (req, res) => {
       return res.status(400).json({ message: "Cannot cancel a completed booking." })
     }
 
-    // Get client and trainer details for notification
-    const [client, trainer] = await Promise.all([User.findById(booking.clientId), User.findById(booking.trainerId)])
+    // Determine who is cancelling the booking based on the token
+    const userId = req.user._id
+    const isClientCancelling = userId.toString() === booking.clientId.toString()
+    const otherUserId = isClientCancelling ? booking.trainerId : booking.clientId
 
-    // Create notification about booking cancellation
-    if (client && trainer) {
-      // Determine who is cancelling the booking based on the token
-      const isClientCancelling = req.user && req.user.id === booking.clientId.toString()
-
-      try {
-        console.log("Attempting to create cancellation notification")
-        if (isClientCancelling) {
-          // Client is cancelling, notify trainer
-          const notificationData = {
-            recipient: booking.trainerId,
-            sender: booking.clientId,
-            type: "schedule_cancelled",
-            title: "Training Session Cancelled",
-            message: `${client.userName} has cancelled the training session scheduled for ${new Date(booking.startDate).toLocaleDateString()}. Please check your schedule for updates.`,
-            relatedSchedule: booking._id,
-          }
-
-          await notificationController.createNotification(notificationData)
-        } else {
-          // Trainer is cancelling, notify client
-          const notificationData = {
-            recipient: booking.clientId,
-            sender: booking.trainerId,
-            type: "schedule_cancelled",
-            title: "Training Session Cancelled",
-            message: `${trainer.userName} has cancelled the training session scheduled for ${new Date(booking.startDate).toLocaleDateString()}. Please contact them for more information or to reschedule.`,
-            relatedSchedule: booking._id,
-          }
-
-          await notificationController.createNotification(notificationData)
-        }
-        console.log("Cancellation notification created successfully")
-      } catch (error) {
-        console.error("Error creating cancellation notification:", error)
-        // Continue with the response even if notification fails
-      }
+    // Send notification about booking cancellation
+    try {
+      await notificationController.notifyBookingCancellation(
+        booking._id,
+        userId,
+        otherUserId
+      )
+      console.log("Booking cancellation notification sent successfully")
+    } catch (notificationError) {
+      console.error("Error sending booking cancellation notification:", notificationError)
+      // Continue with the response even if notification fails
     }
 
     booking.status = "cancelled"
@@ -509,18 +454,385 @@ exports.getClientCompletedBookings = async (req, res) => {
   }
 };
 
+// Add this new function to your existing controller file
+exports.getAllBookings = async (req, res) => {
+  try {
+    // Get query parameters for filtering
+    const { status, startDate, endDate, trainerId, clientId, page = 1, limit = 10 } = req.query;
+    
+    // Build filter object
+    const filter = {};
+    
+    // Add filters if provided
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+    
+    if (trainerId) {
+      filter.trainerId = trainerId;
+    }
+    
+    if (clientId) {
+      filter.clientId = clientId;
+    }
+    
+    // Date range filter
+    if (startDate || endDate) {
+      filter.startDate = {};
+      if (startDate) {
+        filter.startDate.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        filter.endDate = filter.endDate || {};
+        filter.endDate.$lte = new Date(endDate);
+      }
+    }
+    
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get total count for pagination
+    const totalCount = await WorkoutSchedule.countDocuments(filter);
+    
+    // Fetch bookings with pagination
+    const bookings = await WorkoutSchedule.find(filter)
+      .populate({
+        path: 'clientId',
+        select: 'userName email profilePicture',
+        model: 'User'
+      })
+      .populate({
+        path: 'trainerId',
+        select: 'userName email profilePicture',
+        model: 'User'
+      })
+      .sort({ startDate: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Calculate booking statistics
+    const stats = await calculateBookingStats();
+    
+    // Format bookings for frontend
+    const formattedBookings = bookings.map(booking => ({
+      _id: booking._id,
+      bookingId: `BK${booking._id.toString().slice(-5)}`,
+      clientId: booking.clientId._id,
+      clientName: booking.clientId.userName,
+      trainerId: booking.trainerId._id,
+      trainerName: booking.trainerId.userName,
+      bookingDate: booking.createdAt,
+      sessionDate: booking.startDate,
+      sessionType: booking.sessionType || "One-on-one", // Default if not specified
+      duration: booking.duration,
+      price: booking.amount,
+      status: booking.status,
+      paymentStatus: booking.paymentStatus,
+      notes: booking.message,
+      location: booking.location || "Gym Location", // Default if not specified
+      cancellationReason: booking.cancellationReason,
+      isClientVerified: booking.isClientVerified
+    }));
+    
+    res.status(200).json({
+      bookings: formattedBookings,
+      stats: stats,
+      pagination: {
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(totalCount / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching bookings:", error);
+    res.status(500).send("Server error: " + error.message);
+  }
+};
 
+// Helper function to calculate booking statistics
+const calculateBookingStats = async () => {
+  try {
+    // Get current date
+    const now = new Date();
+    
+    // Get counts by status
+    const [totalCount, completedCount, upcomingCount, cancelledCount, ongoingCount] = await Promise.all([
+      WorkoutSchedule.countDocuments({}),
+      WorkoutSchedule.countDocuments({ status: 'completed' }),
+      WorkoutSchedule.countDocuments({ status: 'upcoming' }),
+      WorkoutSchedule.countDocuments({ status: 'cancelled' }),
+      WorkoutSchedule.countDocuments({ status: 'ongoing' })
+    ]);
+    
+    // Calculate total revenue from completed bookings
+    const completedBookings = await WorkoutSchedule.find({ 
+      status: 'completed',
+      paymentStatus: 'paid'
+    });
+    
+    const totalRevenue = completedBookings.reduce((sum, booking) => sum + (booking.amount || 0), 0);
+    
+    // Get bookings by month
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    
+    const bookingsByMonth = await WorkoutSchedule.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: { 
+            month: { $month: "$createdAt" }, 
+            year: { $year: "$createdAt" } 
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { "_id.year": 1, "_id.month": 1 }
+      }
+    ]);
+    
+    // Format bookings by month
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const formattedBookingsByMonth = bookingsByMonth.map(item => ({
+      month: `${monthNames[item._id.month - 1]} ${item._id.year}`,
+      count: item.count
+    }));
+    
+    // Get bookings by day of week
+    const bookingsByDayOfWeek = await WorkoutSchedule.aggregate([
+      {
+        $group: {
+          _id: { $dayOfWeek: "$startDate" },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { "_id": 1 }
+      }
+    ]);
+    
+    // Format bookings by day of week (MongoDB $dayOfWeek returns 1 for Sunday, 2 for Monday, etc.)
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const formattedBookingsByDayOfWeek = dayNames.map((day, index) => {
+      const dayData = bookingsByDayOfWeek.find(item => item._id === index + 1);
+      return {
+        day,
+        count: dayData ? dayData.count : 0
+      };
+    });
+    
+    // Get popular trainers
+    const popularTrainers = await WorkoutSchedule.aggregate([
+      {
+        $group: {
+          _id: "$trainerId",
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      },
+      {
+        $limit: 5
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "trainerInfo"
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          count: 1,
+          name: { $arrayElemAt: ["$trainerInfo.userName", 0] }
+        }
+      }
+    ]);
+    
+    return {
+      totalBookings: totalCount,
+      completedBookings: completedCount,
+      upcomingBookings: upcomingCount,
+      cancelledBookings: cancelledCount,
+      ongoingBookings: ongoingCount,
+      totalRevenue: totalRevenue,
+      bookingsByMonth: formattedBookingsByMonth,
+      bookingsByStatus: [
+        { status: "Completed", count: completedCount },
+        { status: "Upcoming", count: upcomingCount },
+        { status: "Cancelled", count: cancelledCount },
+        { status: "Ongoing", count: ongoingCount }
+      ],
+      popularTrainers: popularTrainers.map(trainer => ({
+        name: trainer.name || `Trainer ${trainer._id}`,
+        count: trainer.count
+      })),
+      bookingsByDayOfWeek: formattedBookingsByDayOfWeek
+    };
+  } catch (error) {
+    console.error("Error calculating booking stats:", error);
+    return {
+      totalBookings: 0,
+      completedBookings: 0,
+      upcomingBookings: 0,
+      cancelledBookings: 0,
+      ongoingBookings: 0,
+      totalRevenue: 0,
+      bookingsByMonth: [],
+      bookingsByStatus: [],
+      popularTrainers: [],
+      bookingsByDayOfWeek: []
+    };
+  }
+};
 
+// Add this function to get a single booking by ID
+exports.getBookingById = async (req, res) => {
+  try {
+    const booking = await WorkoutSchedule.findById(req.params.id)
+      .populate({
+        path: 'clientId',
+        select: 'userName email profilePicture',
+        model: 'User'
+      })
+      .populate({
+        path: 'trainerId',
+        select: 'userName email profilePicture',
+        model: 'User'
+      });
+    
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    
+    // Format booking for frontend
+    const formattedBooking = {
+      _id: booking._id,
+      bookingId: `BK${booking._id.toString().slice(-5)}`,
+      clientId: booking.clientId._id,
+      clientName: booking.clientId.userName,
+      trainerId: booking.trainerId._id,
+      trainerName: booking.trainerId.userName,
+      bookingDate: booking.createdAt,
+      sessionDate: booking.startDate,
+      sessionType: booking.sessionType || "One-on-one",
+      duration: booking.duration,
+      price: booking.amount,
+      status: booking.status,
+      paymentStatus: booking.paymentStatus,
+      notes: booking.message,
+      location: booking.location || "Gym Location",
+      cancellationReason: booking.cancellationReason,
+      isClientVerified: booking.isClientVerified,
+      rating: booking.rating,
+      feedback: booking.feedback
+    };
+    
+    res.status(200).json(formattedBooking);
+  } catch (error) {
+    console.error("Error fetching booking:", error);
+    res.status(500).send("Server error: " + error.message);
+  }
+};
 
+// Add this function to update booking status
+exports.updateBookingStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+    
+    const booking = await WorkoutSchedule.findById(req.params.id);
+    
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    
+    // Get the old status for notification purposes
+    const oldStatus = booking.status;
+    
+    booking.status = status;
+    
+    // If cancelling, optionally add cancellation reason
+    if (status === 'cancelled' && req.body.cancellationReason) {
+      booking.cancellationReason = req.body.cancellationReason;
+    }
+    
+    await booking.save();
+    
+    // Send notifications based on status change
+    if (oldStatus !== status) {
+      try {
+        if (status === 'cancelled') {
+          // Admin is cancelling the booking, notify both client and trainer
+          await notificationController.notifyBookingCancellation(
+            booking._id,
+            req.user._id, // Admin ID
+            booking.clientId // Notify client
+          );
+          
+          await notificationController.notifyBookingCancellation(
+            booking._id,
+            req.user._id, // Admin ID
+            booking.trainerId // Notify trainer
+          );
+        } else if (status === 'upcoming' || status === 'ongoing') {
+          // Status changed to active, notify both parties
+          const message = `Your booking status has been updated to ${status}`;
+          
+          // Create custom notifications for both client and trainer
+          await notificationController.createNotification({
+            recipient: booking.clientId,
+            sender: req.user._id,
+            type: 'system',
+            title: 'Booking Status Updated',
+            message,
+            relatedSchedule: booking._id
+          });
+          
+          await notificationController.createNotification({
+            recipient: booking.trainerId,
+            sender: req.user._id,
+            type: 'system',
+            title: 'Booking Status Updated',
+            message,
+            relatedSchedule: booking._id
+          });
+        }
+      } catch (notificationError) {
+        console.error("Error sending status update notifications:", notificationError);
+        // Continue with the response even if notification fails
+      }
+    }
+    
+    res.status(200).json({ 
+      message: "Booking status updated successfully",
+      booking: booking
+    });
+  } catch (error) {
+    console.error("Error updating booking status:", error);
+    res.status(500).send("Server error: " + error.message);
+  }
+};
 
 exports.getClientTrainers = async (req, res) => {
   try {
     const clientId = req.params.id;
     
- 
+    // Get bookings for the client with verified trainers
     const bookings = await WorkoutSchedule.find({
       clientId: clientId,
-    
       isClientVerified: true
     }).populate({
       path: "trainerId",
@@ -532,12 +844,12 @@ exports.getClientTrainers = async (req, res) => {
       return res.status(404).json({ message: "No trainers found for this client." });
     }
     
-   
+    // Create a map to store unique trainers
     const trainersMap = new Map();
     
     bookings.forEach(booking => {
       if (booking.trainerId && !trainersMap.has(booking.trainerId._id.toString())) {
- 
+        // Filter bookings for this specific trainer with the current client
         const trainerBookings = bookings.filter(b => 
           b.trainerId && b.trainerId._id.toString() === booking.trainerId._id.toString()
         );
@@ -546,13 +858,13 @@ exports.getClientTrainers = async (req, res) => {
         const upcomingSessions = trainerBookings.filter(b => b.status === "upcoming").length;
         const ongoingSessions = trainerBookings.filter(b => b.status === "ongoing").length;
         
-     
+        // Get the last session date
         const completedBookings = trainerBookings.filter(b => b.status === "completed");
         const lastSessionDate = completedBookings.length > 0 
           ? Math.max(...completedBookings.map(b => new Date(b.endDate).getTime()))
           : null;
           
-   
+        // Get the next session
         const upcomingBookings = trainerBookings.filter(b => b.status === "upcoming" || b.status === "ongoing");
         let nextSession = null;
         
@@ -584,7 +896,7 @@ exports.getClientTrainers = async (req, res) => {
       }
     });
     
-  
+    // Convert the map to an array
     const clientTrainers = Array.from(trainersMap.values());
     
     res.status(200).json(clientTrainers);
@@ -593,7 +905,6 @@ exports.getClientTrainers = async (req, res) => {
     res.status(500).send("Server error: " + error.message);
   }
 };
-
 
 exports.getTrainerClients = async (req, res) => {
   try {
@@ -676,3 +987,100 @@ exports.getTrainerClients = async (req, res) => {
   }
 };
 
+
+
+exports.getBookingProgress = async (req, res) => {
+  try {
+    // Get the last 12 months for our data range
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setMonth(startDate.getMonth() - 11) // Last 12 months
+
+    // Create an array of all months in our range for consistent data points
+    const monthsRange = []
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(startDate)
+      date.setMonth(date.getMonth() + i)
+      monthsRange.push({
+        month: date.getMonth() + 1,
+        year: date.getFullYear(),
+        key: `${date.getMonth() + 1}/${date.getFullYear()}`
+      })
+    }
+
+    // Get bookings by month
+    const monthlyBookings = await WorkoutSchedule.aggregate([
+      { 
+        $match: { 
+          createdAt: { $gte: startDate, $lte: endDate }
+        } 
+      },
+      {
+        $group: {
+          _id: {
+            month: { $month: "$createdAt" },
+            year: { $year: "$createdAt" }
+          },
+          count: { $sum: 1 },
+          // Calculate new bookings (will be updated later)
+          newBookings: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } }
+    ])
+
+    // Create a map for easy lookup
+    const bookingsMap = {}
+    monthlyBookings.forEach(item => {
+      const key = `${item._id.month}/${item._id.year}`
+      bookingsMap[key] = {
+        newBookings: item.count
+      }
+    })
+
+    // Calculate cumulative bookings
+    let cumulativeCount = 0
+    // Get count of bookings created before our start date
+    const priorBookingsCount = await WorkoutSchedule.countDocuments({
+      createdAt: { $lt: startDate }
+    })
+    cumulativeCount = priorBookingsCount
+
+    // Combine all data into a consistent format with all months
+    const progressData = monthsRange.map(monthData => {
+      const key = monthData.key
+      const monthStats = bookingsMap[key] || { newBookings: 0 }
+      
+      // Add this month's new bookings to the cumulative count
+      cumulativeCount += monthStats.newBookings
+
+      // Format month name for display
+      const date = new Date(monthData.year, monthData.month - 1, 1)
+      const monthName = date.toLocaleString('default', { month: 'short' })
+      
+      return {
+        monthYear: key,
+        month: monthName,
+        year: monthData.year,
+        newBookings: monthStats.newBookings,
+        totalBookings: cumulativeCount,
+        // Add status breakdown if needed
+        completed: Math.floor(monthStats.newBookings * 0.6), // Example calculation
+        cancelled: Math.floor(monthStats.newBookings * 0.1), // Example calculation
+        ongoing: Math.floor(monthStats.newBookings * 0.3)  // Example calculation
+      }
+    })
+
+    res.status(200).json({
+      success: true,
+      data: progressData
+    })
+  } catch (error) {
+    console.error("Error fetching booking progress data:", error)
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    })
+  }
+}

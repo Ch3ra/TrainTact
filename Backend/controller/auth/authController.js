@@ -3,6 +3,7 @@ const Trainer = require("../../model/trainerModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const sendEmail = require("../../services/sendEmail");
+const notificationController = require("../notification/NotificationController");
 
 // Helper function to generate OTP
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
@@ -66,14 +67,18 @@ exports.registerClient = async (req, res) => {
 
 
 
-// Register Trainer
+
+// Add this at the top of your authController.js file
+
+
+// Then modify your registerTrainer function to include the notification
 exports.registerTrainer = async (req, res) => {
-    const { email, password, username, yearsOfExperience } = req.body;
+    const { email, password, username, yearsOfExperience, age, bibliography } = req.body;
     const resume = req.files?.resume?.[0]?.filename || null; // Handle resume upload
     const profilePicture = req.files?.profilePicture?.[0]?.filename || null; // Handle profile picture upload
   
     try {
-      if (!email || !password || !username || !yearsOfExperience) {
+      if (!email || !password || !username || !yearsOfExperience || !age) {
         return res.status(400).json({ message: "Please provide all required information." });
       }
   
@@ -89,12 +94,14 @@ exports.registerTrainer = async (req, res) => {
         password: hashedPassword,
         role: "Trainer",
         profilePicture,
+        age: parseInt(age)
       });
   
       await Trainer.create({
         user: trainerUser._id,
         yearsOfExperience,
         resume,
+        bibliography
       });
   
       // Send email notification
@@ -118,8 +125,18 @@ exports.registerTrainer = async (req, res) => {
       } catch (emailError) {
         console.error("Error sending email:", emailError.message);
       }
+      
+      // Send notification to admin about new trainer registration
+      try {
+        await notificationController.notifyNewTrainerRegistration(
+          trainerUser._id,
+          username
+        );
+        console.log("Admin notification sent for new trainer registration");
+      } catch (notificationError) {
+        console.error("Error sending admin notification:", notificationError);
+      }
   
-      // Continue existing logic
       res.status(201).json({ message: "Trainer registered successfully." });
     } catch (error) {
       res.status(500).json({
@@ -127,7 +144,7 @@ exports.registerTrainer = async (req, res) => {
         error: error.message,
       });
     }
-  };
+};
   
 
 // Login User
@@ -164,11 +181,11 @@ exports.loginUser = async (req, res) => {
         // Redirect based on role
         let redirectUrl;
         if (user.role === "Admin") {
-            redirectUrl = "/adminDash";
+            redirectUrl = "/admin";
         } else if (user.role === "Trainer") {
             redirectUrl = "/trainerDash";
         } else if (user.role === "Client") {
-            redirectUrl = "/clientDash";
+            redirectUrl = "/home";
         } else {
             return res.status(400).json({ message: "Invalid user role." });
         }

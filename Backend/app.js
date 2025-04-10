@@ -120,6 +120,8 @@ const chatRoutes = require("./routes/chatRoute")
 const notificationRoutes = require("./routes/notificationRoute")
 const ratingRoutes = require("./routes/ratingRoute");
 const exerciseRoutes = require("./routes/exerciseRoure");
+const adminRoutes = require("./routes/adminRoute");
+const trainerDashboardRoutes = require("./routes/trainerDashboardRoute"); 
 const { initStatusUpdateJob } = require("./controller/availabilityController/availabilityController")
 
 // Test API to check if server is live or not
@@ -131,6 +133,8 @@ app.get("/", (req, res) => {
 
 //BackgroundServide
 initStatusUpdateJob()
+const clientExerciseRoutes = require('./routes/clientExerciseRoute');
+app.use('/api/client-exercises', clientExerciseRoutes);
 
 // Routes
 app.use("/api/auth", authRoutes)
@@ -141,7 +145,8 @@ app.use("/api/availability", availabilityRoutes)
 app.use("/api/chat", chatRoutes)
 app.use("/api/video-call", require("./routes/videoCallRoute"))
 app.use("/api/notifications", notificationRoutes)
-
+app.use("/api/admin", adminRoutes);
+app.use("/api/trainer-dashboard", trainerDashboardRoutes); // New route registration
 app.use("/api/exercises", exerciseRoutes);
 app.use("/api/ratings", ratingRoutes);
 

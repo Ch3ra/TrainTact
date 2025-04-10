@@ -35,8 +35,58 @@ const ExerciseEditForm = () => {
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
 
-  // Fetch exercise data
+  // Authentication check
   useEffect(() => {
+    const checkAuth = () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found in ExerciseEditForm");
+        toast.error("Please log in to access this page");
+        navigate('/authentication');
+        return false;
+      }
+      
+      try {
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token in ExerciseEditForm:", decodedToken);
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType;
+        
+        console.log("Detected user role in ExerciseEditForm:", userRole);
+        
+        // Check if user is a trainer - be more flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'trainer') {
+          console.log("Access denied in ExerciseEditForm: User is not a trainer");
+          toast.error("Only trainers can edit exercise programs");
+          navigate('/authentication');
+          return false;
+        }
+        
+        // User is a trainer, set userId and continue
+        setUserId(decodedToken.id);
+        return true;
+      } catch (error) {
+        console.error("Failed to decode token in ExerciseEditForm", error);
+        console.error("Token content:", token);
+        toast.error("Authentication error. Please log in again.");
+        navigate('/authentication');
+        return false;
+      }
+    };
+    
+    // Run auth check first
+    if (!checkAuth()) {
+      return; // Stop execution if auth check fails
+    }
+    
+    // Now fetch the exercise data if authentication passed
     const fetchExerciseData = async () => {
       if (!exerciseId) {
         toast.error("No exercise ID provided");
@@ -96,20 +146,6 @@ const ExerciseEditForm = () => {
 
     fetchExerciseData();
   }, [exerciseId, navigate]);
-
-  // Set user ID from token
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      try {
-        const decodedToken = JSON.parse(atob(token.split(".")[1]));
-        setUserId(decodedToken.id);
-      } catch (error) {
-        console.error("Error decoding token:", error);
-        toast.error("Authentication error. Please log in again.");
-      }
-    }
-  }, []);
 
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];

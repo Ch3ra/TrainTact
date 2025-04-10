@@ -16,8 +16,56 @@ const ClientDash = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-const navigate = useNavigate();
+  const [userId, setUserId] = useState(null);
+  const navigate = useNavigate();
   
+  // Add authentication check on component mount
+  useEffect(() => {
+    // Authentication check
+    const checkAuth = () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found");
+        navigate('/authentication');
+        return false;
+      }
+      
+      try {
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token:", decodedToken);
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType;
+        
+        console.log("Detected user role:", userRole);
+        
+        // Check if user is a client - be flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'client') {
+          console.log("Access denied: User is not a client");
+          navigate('/authentication');
+          return false;
+        }
+        
+        // User is a client (or we couldn't determine otherwise), set userId and continue
+        setUserId(decodedToken.id);
+        return true;
+      } catch (error) {
+        console.error("Failed to decode token", error);
+        console.error("Token content:", token);
+        navigate('/authentication');
+        return false;
+      }
+    };
+    
+    // Run auth check
+    checkAuth();
+  }, [navigate]);
   
   useEffect(() => {
     const checkProfileComplete = async () => {
@@ -48,10 +96,11 @@ const navigate = useNavigate();
       }
     };
   
-    checkProfileComplete();
-  }, []);
-
- 
+    // Only check profile if user is authenticated and userId is set
+    if (userId) {
+      checkProfileComplete();
+    }
+  }, [userId]);
 
   useEffect(() => {
     const fetchTrainers = async () => {
@@ -73,8 +122,11 @@ const navigate = useNavigate();
       }
     };
 
-    fetchTrainers();
-  }, []);
+    // Only fetch trainers if user is authenticated and userId is set
+    if (userId) {
+      fetchTrainers();
+    }
+  }, [userId]);
 
   const trainerCategories = [
     "Yoga", 
@@ -221,69 +273,65 @@ const navigate = useNavigate();
         </div>
 
         {isLoading ? (
-  <div className="flex justify-center items-center h-40">
-    Loading trainers...
-  </div>
-) : error ? (
-  <div className="flex justify-center items-center h-40 text-red-500">
-    {error.includes('404') 
-      ? "No trainers available at the moment. Please check back later!" 
-      : `Error: ${error}`
-    }
-  </div>
-) : trainers.length === 0 ? (
-  <div className="flex justify-center items-center h-40 text-gray-500">
-    No trainers found. Please try again later!
-  </div>
-) : (
- 
-  <div className="flex gap-4 px-4">
-  {filteredTrainers.map((trainer, index) => (
-    <NavLink key={trainer._id || index} to={`/trainerDetails/${trainer.ID}`}>
-      <Card
-        name={trainer.username || trainer.name}
-        role={trainer.fitnessGoal}
-        image={trainer.profilePicture || 'default-profile-picture.jpg'}
-      />
-    </NavLink>
-  ))}
-</div>
-
- 
-)}
-
+          <div className="flex justify-center items-center h-40">
+            Loading trainers...
+          </div>
+        ) : error ? (
+          <div className="flex justify-center items-center h-40 text-red-500">
+            {error.includes('404') 
+              ? "No trainers available at the moment. Please check back later!" 
+              : `Error: ${error}`
+            }
+          </div>
+        ) : trainers.length === 0 ? (
+          <div className="flex justify-center items-center h-40 text-gray-500">
+            No trainers found. Please try again later!
+          </div>
+        ) : (
+          <div className="flex gap-4 px-4">
+            {filteredTrainers.map((trainer, index) => (
+              <NavLink key={trainer._id || index} to={`/trainerDetails/${trainer.ID}`}>
+                <Card
+                  name={trainer.username || trainer.name}
+                  role={trainer.fitnessGoal}
+                  image={trainer.profilePicture || 'default-profile-picture.jpg'}
+                />
+              </NavLink>
+            ))}
+          </div>
+        )}
       </div>
+      
       <div className='flex justify-center mt-4'>
         <Pagination/>
       </div>
 
-
       {/* Profile Completion Modal */}
-{showProfileModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-      <h3 className="text-xl font-bold mb-4">Profile Incomplete</h3>
-      <p className="text-gray-600 mb-6">
-        Please complete your profile information to get the best experience.
-        Would you like to fill it now?
-      </p>
-      <div className="flex justify-end space-x-4">
-        <button 
-          onClick={() => setShowProfileModal(false)}
-          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
-        >
-          Later
-        </button>
-        <button 
-          onClick={() => navigate('/addprofile')}
-          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-        >
-          Yes, Fill Profile
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Profile Incomplete</h3>
+            <p className="text-gray-600 mb-6">
+              Please complete your profile information to get the best experience.
+              Would you like to fill it now?
+            </p>
+            <div className="flex justify-end space-x-4">
+              <button 
+                onClick={() => setShowProfileModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Later
+              </button>
+              <button 
+                onClick={() => navigate('/addprofile')}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Yes, Fill Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

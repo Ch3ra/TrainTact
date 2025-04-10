@@ -11,6 +11,7 @@ import EmptyState from "./components/EmptyState"
 import VideoCall from "./VideoCall"
 
 const API_BASE_URL = "http://localhost:3000/api"
+const BASE_URL = "http://localhost:3000"
 
 const Chat = () => {
   const [messages, setMessages] = useState([])
@@ -54,11 +55,21 @@ const Chat = () => {
 
     socketService.onMessage((data) => {
       if (currentChat && data.senderId === currentChat.userId) {
+        // Ensure file URLs are properly formatted
+        const files = data.files
+          ? data.files.map((file) => {
+              if (file.url && !file.url.startsWith("http")) {
+                file.url = `${BASE_URL}/${file.path || file.url.replace(/^\//, "")}`
+              }
+              return file
+            })
+          : []
+
         const newMsg = {
           id: data.messageId || Date.now(),
           sender: "other",
           text: data.text,
-          files: data.files || [],
+          files: files,
           timestamp: new Date(data.createdAt || Date.now()).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -263,12 +274,24 @@ const Chat = () => {
           })
         }
 
+        // Ensure file URLs are properly formatted in the response
+        const responseFiles = response.data.chat.file
+          ? response.data.chat.file.map((file) => {
+              if (file.url && !file.url.startsWith("http")) {
+                file.url = `${BASE_URL}/${file.path || file.url.replace(/^\//, "")}`
+              } else if (!file.url && file.path) {
+                file.url = `${BASE_URL}/${file.path.replace(/^\//, "")}`
+              }
+              return file
+            })
+          : []
+
         // Update the message with the real data from the server
         const updatedMessage = {
           id: response.data.chat._id,
           sender: "me",
           text: response.data.chat.text,
-          files: response.data.chat.file,
+          files: responseFiles,
           timestamp,
         }
 
@@ -279,7 +302,7 @@ const Chat = () => {
           senderId: userId,
           receiverId: currentChat.userId,
           text: response.data.chat.text,
-          files: response.data.chat.file,
+          files: responseFiles,
           messageId: response.data.chat._id,
           createdAt: response.data.chat.createdAt,
         })
@@ -349,73 +372,69 @@ const Chat = () => {
     }
   }
 
-  // Updated handleAcceptCall function in the Chat component
+  const handleAcceptCall = async () => {
+    try {
+      console.log("Accepting incoming call:", incomingCall)
 
-// Updated handleAcceptCall function in the Chat component
+      // Get call ID from the incoming call data
+      const callId = incomingCall.callId
 
-const handleAcceptCall = async () => {
-  try {
-    console.log("Accepting incoming call:", incomingCall);
-    
-    // Get call ID from the incoming call data
-    const callId = incomingCall.callId;
-    
-    // Find the chat/conversation with the caller
-    const relatedChat = chats.find((c) => c.id === incomingCall.conversationId);
-    
-    if (!relatedChat) {
-      console.error("Could not find chat related to incoming call");
-      setError("Failed to find caller information");
-      return;
+      // Find the chat/conversation with the caller
+      const relatedChat = chats.find((c) => c.id === incomingCall.conversationId)
+
+      if (!relatedChat) {
+        console.error("Could not find chat related to incoming call")
+        setError("Failed to find caller information")
+        return
+      }
+
+      console.log("Setting up call with:", relatedChat)
+
+      // Set current call information
+      setCurrentCall({
+        callId: callId,
+        otherUser: relatedChat,
+      })
+
+      // Set as non-initiator (receiver)
+      setIsCallInitiator(false)
+
+      // Track active call in socket service - important for proper signaling
+      socketService.setActiveCall(callId)
+
+      // CRITICAL: First join the call room BEFORE setting callInProgress to true
+      // This ensures the socket is ready to receive WebRTC signals
+      console.log("Joining video call room:", callId)
+      socketService.joinVideoCall(callId)
+
+      // Short delay to ensure socket room join is processed
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Update call status to ongoing only after joining the room
+      await axios.put(`${API_BASE_URL}/video-call/updateStatus`, {
+        callId: callId,
+        status: "ongoing",
+      })
+
+      // Let the initiator know we've accepted and joined
+      socketService.acceptCall({
+        callId: callId,
+        userId: userId,
+        acceptedBy: userId,
+      })
+
+      console.log("Call accepted and ready to establish connection")
+
+      // Clear incoming call dialog
+      setIncomingCall(null)
+
+      // Now set the UI to show the call in progress - this will mount the VideoCall component
+      setCallInProgress(true)
+    } catch (error) {
+      console.error("Error accepting call:", error)
+      setError("Failed to accept call: " + error.message)
     }
-
-    console.log("Setting up call with:", relatedChat);
-    
-    // Set current call information
-    setCurrentCall({
-      callId: callId,
-      otherUser: relatedChat,
-    });
-    
-    // Set as non-initiator (receiver)
-    setIsCallInitiator(false);
-    
-    // Track active call in socket service - important for proper signaling
-    socketService.setActiveCall(callId);
-    
-    // CRITICAL: First join the call room BEFORE setting callInProgress to true
-    // This ensures the socket is ready to receive WebRTC signals
-    console.log("Joining video call room:", callId);
-    socketService.joinVideoCall(callId);
-    
-    // Short delay to ensure socket room join is processed
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Update call status to ongoing only after joining the room
-    await axios.put(`${API_BASE_URL}/video-call/updateStatus`, {
-      callId: callId,
-      status: "ongoing",
-    });
-    
-    // Let the initiator know we've accepted and joined
-    socketService.acceptCall({
-      callId: callId,
-      userId: userId,
-      acceptedBy: userId,
-    });
-    
-    console.log("Call accepted and ready to establish connection");
-    
-    // Clear incoming call dialog
-    setIncomingCall(null);
-    
-    // Now set the UI to show the call in progress - this will mount the VideoCall component
-    setCallInProgress(true);
-  } catch (error) {
-    console.error("Error accepting call:", error);
-    setError("Failed to accept call: " + error.message);
   }
-};
 
   const handleDeclineCall = async () => {
     try {
@@ -439,14 +458,22 @@ const handleAcceptCall = async () => {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <aside className="w-80 bg-white border-r overflow-y-auto">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center">
+          <button className="mr-2 text-gray-500 hover:text-gray-700 transition" onClick={() => window.history.back()}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fillRule="evenodd"
+                d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L4.414 9H17a1 1 0 110 2H4.414l5.293 5.293a1 1 0 010 1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
           <h2 className="text-xl font-bold flex items-center">
             <span className="text-red-600">Train</span>
             <span>Tact</span>
             <span className="ml-2 text-sm text-gray-500 font-normal">Messages</span>
           </h2>
         </div>
-
         <ChatList error={error} chats={chats} currentChat={currentChat} onChatSelect={handleChatSelect} />
       </aside>
 
@@ -454,7 +481,12 @@ const handleAcceptCall = async () => {
         {currentChat ? (
           <>
             <div className="sticky top-0 z-10">
-              <ChatHeader chat={currentChat}  onlineUsers={onlineUsers} onBack={() => setCurrentChat(null)} onVideoCall={handleVideoCall} />
+              <ChatHeader
+                chat={currentChat}
+                onlineUsers={onlineUsers}
+                onBack={() => setCurrentChat(null)}
+                onVideoCall={handleVideoCall}
+              />
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
@@ -469,7 +501,6 @@ const handleAcceptCall = async () => {
                     currentChat={currentChat}
                     messageEndRef={messageEndRef}
                     isTyping={isTyping}
-
                   />
                 </div>
               )}
@@ -525,4 +556,3 @@ const handleAcceptCall = async () => {
 }
 
 export default Chat
-

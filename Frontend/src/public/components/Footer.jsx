@@ -18,13 +18,13 @@ const Footer = () => {
         <div className="h-10"></div>
           <div className="text-sm text-gray-600 mt-4">
             <p className="mb-2">
-              © {new Date().getFullYear()} Bash Booker™. All Rights Reserved.
+              © {new Date().getFullYear()} TT TrainTact™. All Rights Reserved.
             </p>
             <p>
               Built by{" "}
               <a
                 href="#"
-                className="text-gray-900 font-semibold hover:text-red-700 transition-colors"
+                className="text-red-700 font-semibold hover:text-red-900 transition-colors"
               >
                 Ch3RaY
               </a>

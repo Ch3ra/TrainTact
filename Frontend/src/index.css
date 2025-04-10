@@ -10,3 +10,12 @@
   .font-custom {
     font-family: 'CustomFont', sans-serif;
   }
+
+
+
+  @layer utilities {
+    .text-balance {
+      text-wrap: balance;
+    }
+  }
+  

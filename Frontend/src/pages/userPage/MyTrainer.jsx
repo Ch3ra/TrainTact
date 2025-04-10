@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react"
 import axios from "axios"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Bell, Mail, ArrowLeft, Star, MessageCircle, Video, Calendar, Clock, CheckCircle } from "lucide-react"
 import { useNotifications } from "../../Notification/NotificationContext"
 import NotificationPanel from "../../Notification/NotificationPannel"
+import { toast } from "react-hot-toast" // Import toast for notifications if you're using it
 
 const MyTrainer = () => {
   const [clientTrainers, setClientTrainers] = useState([])
@@ -21,6 +22,7 @@ const MyTrainer = () => {
     userName: "",
     profilePicture: "",
   })
+  const navigate = useNavigate()
 
   // Use the notification context
   const { notifications, unreadCount, fetchNotifications } = useNotifications()
@@ -35,19 +37,57 @@ const MyTrainer = () => {
   }
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (token) {
+    // Client-only authentication check
+    const checkClientAuth = () => {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found in MyTrainer")
+        toast?.error("Please log in to view your trainers")
+        navigate('/authentication')
+        return false
+      }
+      
       try {
+        // Decode token to check role
         const decodedToken = JSON.parse(atob(token.split(".")[1]))
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token in MyTrainer:", decodedToken)
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType
+        
+        console.log("Detected user role in MyTrainer:", userRole)
+        
+        // Check if user is a client - be more flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'client') {
+          console.log("Access denied in MyTrainer: User is not a client")
+          toast?.error("This page is only accessible to clients")
+          navigate('/authentication')
+          return false
+        }
+        
+        // User is a client, set userId and continue
         setUserId(decodedToken.id)
         fetchProfileData(decodedToken.id)
         fetchClientTrainers(decodedToken.id)
         fetchCompletedWorkouts(decodedToken.id)
+        return true
       } catch (error) {
-        console.error("Error decoding token:", error)
+        console.error("Failed to decode token in MyTrainer", error)
+        console.error("Token content:", token)
+        toast?.error("Authentication error. Please log in again.")
+        navigate('/authentication')
+        return false
       }
     }
-  }, [])
+    
+    // Run client authentication check
+    checkClientAuth()
+  }, [navigate])
 
   const fetchProfileData = async (userId) => {
     try {
@@ -63,13 +103,21 @@ const MyTrainer = () => {
   const fetchClientTrainers = async (userId) => {
     try {
       // Use the new API endpoint to get all trainers for this client
-      const response = await axios.get(`http://localhost:3000/api/availability/client/trainers/${userId}`)
+      const response = await axios.get(`http://localhost:3000/api/availability/client/trainers/${userId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      })
       
       // Get trainer ratings
       const trainersWithRatings = await Promise.all(
         response.data.map(async (trainer) => {
           try {
-            const ratingResponse = await axios.get(`http://localhost:3000/api/ratings/trainer/${trainer._id}`)
+            const ratingResponse = await axios.get(`http://localhost:3000/api/ratings/trainer/${trainer._id}`, {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+            })
             return {
               ...trainer,
               averageRating: ratingResponse.data.averageRating || 0,
@@ -96,13 +144,21 @@ const MyTrainer = () => {
 
   const fetchCompletedWorkouts = async (userId) => {
     try {
-      const response = await axios.get(`http://localhost:3000/api/availability/client/completed/${userId}`)
+      const response = await axios.get(`http://localhost:3000/api/availability/client/completed/${userId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      })
 
       // Get rating status for each workout
       const workoutsWithRatingStatus = await Promise.all(
         response.data.map(async (workout) => {
           try {
-            const ratingResponse = await axios.get(`http://localhost:3000/api/ratings/check/${workout._id}`)
+            const ratingResponse = await axios.get(`http://localhost:3000/api/ratings/check/${workout._id}`, {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+            })
             return {
               ...workout,
               isRated: ratingResponse.data.isRated,
@@ -140,11 +196,18 @@ const MyTrainer = () => {
         rating,
         feedback,
         clientId: userId,
+      }, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
       })
 
       // Refresh data after rating
       fetchCompletedWorkouts(userId)
       fetchClientTrainers(userId)
+      
+      toast?.success("Rating submitted successfully!")
 
       // Close modal and reset form
       setShowRatingModal(false)
@@ -153,7 +216,7 @@ const MyTrainer = () => {
       setFeedback("")
     } catch (error) {
       console.error("Failed to submit rating:", error)
-      alert("Failed to submit rating. Please try again.")
+      toast?.error("Failed to submit rating. Please try again.")
     } finally {
       setSubmitting(false)
     }
@@ -167,6 +230,12 @@ const MyTrainer = () => {
       day: 'numeric',
       year: 'numeric'
     })
+  }
+  
+  // Logout handler
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    navigate('/authentication')
   }
 
   return (
@@ -197,9 +266,16 @@ const MyTrainer = () => {
           </div>
           <div className="relative cursor-pointer">
             <img
-              src={profileData.profilePicture || "/placeholder.svg"}
+              src={
+                profileData.profilePicture 
+                  ? `http://localhost:3000/uploads/profilePictures/${profileData.profilePicture}`
+                  : "/placeholder.svg"
+              }
               alt="Profile"
               className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-100 hover:ring-gray-200 transition-all duration-200"
+              onError={(e) => {
+                e.target.src = "/placeholder.svg";
+              }}
             />
           </div>
         </div>
@@ -228,7 +304,10 @@ const MyTrainer = () => {
               <div className="w-6 h-6">💳</div>
               <span>Payments</span>
             </div>
-            <div className="flex items-center cursor-pointer space-x-3 p-3">
+            <div 
+              className="flex items-center cursor-pointer space-x-3 p-3"
+              onClick={handleLogout}
+            >
               <div className="w-6 h-6">🚪</div>
               <span>Logout</span>
             </div>
@@ -266,6 +345,9 @@ const MyTrainer = () => {
                             }
                             alt={trainer.userName}
                             className="w-full h-48 object-cover"
+                            onError={(e) => {
+                              e.target.src = "/placeholder.svg";
+                            }}
                           />
                           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                             <h3 className="text-white font-semibold text-lg">{trainer.userName}</h3>
@@ -381,6 +463,9 @@ const MyTrainer = () => {
                               }
                               alt={workout.trainerId?.userName}
                               className="w-14 h-14 rounded-full object-cover"
+                              onError={(e) => {
+                                e.target.src = "/placeholder.svg";
+                              }}
                             />
                             <div>
                               <h3 className="font-medium">{workout.trainerId?.userName}</h3>

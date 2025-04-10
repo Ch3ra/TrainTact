@@ -1,147 +1,245 @@
-import React, { useState, useEffect } from 'react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
-import { ArrowLeft } from 'lucide-react';
+"use client"
+
+import { useState, useEffect } from "react"
+import ReactQuill from "react-quill"
+import "react-quill/dist/quill.snow.css"
+import { ArrowLeft } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 const ClientProfileEdit = () => {
-  const [userId, setUserId] = useState(null);
-  const [token, setToken] = useState(null);
+  const [userId, setUserId] = useState(null)
+  const [token, setToken] = useState(null)
+  const navigate = useNavigate()
   const [userData, setUserData] = useState({
-    userName: '',
-    email: '',
-    fitnessGoal: '',
-    height: '',
-    weight: '',
-    fitnessLevel: '',
-    description: '',
-    location: ''
-  });
+    userName: "",
+    email: "",
+    fitnessGoal: "",
+    height: "",
+    weight: "",
+    fitnessLevel: "",
+    description: "",
+    location: "",
+    profilePicture: "",
+  })
+  const [previewImg, setPreviewImg] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Get token and userId from localStorage
+  // Authentication check when component mounts
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      setToken(token);
-      const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      setUserId(decodedToken.id);
-      console.log("Token:", token);
-      console.log("Decoded User ID:", decodedToken.id);
+    const checkAuth = () => {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found")
+        navigate("/authentication")
+        return false
+      }
+
+      try {
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]))
+
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token:", decodedToken)
+
+        // The role field might be named differently
+        const userRole =
+          decodedToken.role ||
+          decodedToken.userRole ||
+          decodedToken.userType ||
+          decodedToken.type ||
+          decodedToken.accountType
+
+        console.log("Detected user role:", userRole)
+
+        // Check if user is a client
+        if (userRole && userRole.toLowerCase() !== "client") {
+          console.log("Access denied: User is not a client")
+          navigate("/authentication")
+          return false
+        }
+
+        // User is a client, set userId and token
+        setUserId(decodedToken.id)
+        setToken(token)
+        return true
+      } catch (error) {
+        console.error("Failed to decode token", error)
+        console.error("Token content:", token)
+        navigate("/authentication")
+        return false
+      }
     }
-  }, []);
 
-  // Fetch user data when userId is available
+    // Run auth check
+    checkAuth()
+  }, [navigate])
+
+  // Load profile data - first try localStorage, then API
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (userId) {
+    const loadProfileData = async () => {
+      setIsLoading(true)
+
+      // Check if we have profile data stored in localStorage from UserProfile component
+      const storedProfileData = localStorage.getItem("profileDataForEdit")
+
+      if (storedProfileData) {
         try {
-          const response = await fetch(`http://localhost:3000/api/client/${userId}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            // Map the nested API response to our form structure
-            setUserData({
-              userName: data.user.userName || '',
-              email: data.user.email || '',
-              fitnessGoal: data.user.fitnessGoal || '',
-              height: data.clientDetails.height || '',
-              weight: data.clientDetails.weight || '',
-              fitnessLevel: data.clientDetails.fitnessLevel || '',
-              description: data.clientDetails.description || '',
-              location: data.user.location || '',
-              profilePicture: data.user.profilePicture || ''
-            });
-            console.log("Mapped User Data:", data);
-          } else {
-            console.error("Failed to fetch user data");
-          }
+          const parsedData = JSON.parse(storedProfileData)
+          console.log("Loaded profile data from localStorage:", parsedData)
+          setUserData(parsedData)
+
+          // Remove the data from localStorage after loading it
+          localStorage.removeItem("profileDataForEdit")
+          setIsLoading(false)
+          return
         } catch (error) {
-          console.error("Error fetching user data:", error);
+          console.error("Error parsing stored profile data:", error)
         }
       }
-    };
 
-    fetchUserData();
-  }, [userId, token]);
+      // If no data in localStorage or parsing failed, fetch from API
+      if (userId && token) {
+        await fetchUserData()
+      }
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setUserData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleQuillChange = (value) => {
-    setUserData(prev => ({
-      ...prev,
-      description: value
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!userId) {
-      console.error("No user ID available for update");
-      return;
+      setIsLoading(false)
     }
-  
-    // Construct the API data based on your form state
-    // const apiData = {
-    //   user: {
-    //     userName: userData.userName,
-    //     email: userData.email,
-    //     fitnessGoal: userData.fitnessGoal,
-    //     location: userData.location
-    //   },
-    //   clientDetails: {
-    //     height: userData.height,
-    //     weight: userData.weight,
-    //     fitnessLevel: userData.fitnessLevel,
-    //     description: userData.description
-    //   }
-    // };
-    const formData= new FormData();
-    formData.append('profilePicture', userData.profilePicture)
-    formData.append('userName', userData.userName)
-    formData.append('email', userData.email)
-    formData.append('fitnessGoal', userData.fitnessGoal)
-    formData.append('fitnessLevel', userData.fitnessLevel)
-    formData.append('description', userData.description)
-    formData.append('location', userData.location)
-    formData.append('height', userData.height)
-    formData.append('weight', userData.weight)
-    
+
+    if (userId && token) {
+      loadProfileData()
+    }
+  }, [userId, token])
+
+  const fetchUserData = async () => {
     try {
-      // Attempt to submit the data via PUT request
+      console.log("Fetching user data for ID:", userId)
       const response = await fetch(`http://localhost:3000/api/client/${userId}`, {
-        method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: formData, // Sending the formData object directly
-      });
-  
+      })
+
       if (response.ok) {
-        console.log("Profile updated successfully");
-        // Optionally, fetch the updated data to update the UI or inform the user
-        const updatedData = await response.json();
-        console.log("Updated data received:", updatedData);
+        const data = await response.json()
+        console.log("API response:", data)
+
+        // Map the nested API response to our form structure
+        const mappedData = {
+          userName: data.user?.userName || "",
+          email: data.user?.email || "",
+          fitnessGoal: data.user?.fitnessGoal || "",
+          height: data.clientDetails?.height || "",
+          weight: data.clientDetails?.weight || "",
+          fitnessLevel: data.clientDetails?.fitnessLevel || "",
+          description: data.clientDetails?.description || "",
+          location: data.user?.location || "",
+          profilePicture: data.user?.profilePicture || "",
+        }
+
+        console.log("Mapped User Data:", mappedData)
+        setUserData(mappedData)
       } else {
-        console.error("Failed to update profile, Status:", response.status);
+        console.error("Failed to fetch user data, status:", response.status)
+        const errorText = await response.text()
+        console.error("Error response:", errorText)
       }
     } catch (error) {
-      console.error("Error updating profile:", error);
+      console.error("Error fetching user data:", error)
     }
-  };
+  }
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target
+    setUserData((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleQuillChange = (value) => {
+    setUserData((prev) => ({
+      ...prev,
+      description: value,
+    }))
+  }
+
+  const handleFileChange = (e) => {
+    if (e.target.files[0]) {
+      setPreviewImg(URL.createObjectURL(e.target.files[0]))
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!userId) {
+      console.error("No user ID available for update")
+      return
+    }
+
+    const formData = new FormData()
+
+    // Check if a new file has been selected
+    if (e.target.profilePicture.files && e.target.profilePicture.files[0]) {
+      formData.append("profilePicture", e.target.profilePicture.files[0])
+    }
+
+    // Append all user data to formData
+    formData.append("userName", userData.userName)
+    formData.append("email", userData.email)
+    formData.append("fitnessGoal", userData.fitnessGoal)
+    formData.append("fitnessLevel", userData.fitnessLevel)
+    formData.append("description", userData.description)
+    formData.append("location", userData.location)
+    formData.append("height", userData.height)
+    formData.append("weight", userData.weight)
+
+    try {
+      console.log("Submitting form data for user ID:", userId)
+      // Attempt to submit the data via PUT request
+      const response = await fetch(`http://localhost:3000/api/client/${userId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData, // Sending the formData object directly
+      })
+
+      if (response.ok) {
+        console.log("Profile updated successfully")
+        // Optionally, fetch the updated data to update the UI or inform the user
+        const updatedData = await response.json()
+        console.log("Updated data received:", updatedData)
+        navigate("/userProfile") // Redirect to profile page after successful update
+      } else {
+        console.error("Failed to update profile, Status:", response.status)
+        const errorText = await response.text()
+        console.error("Error response:", errorText)
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error)
+    }
+  }
+
+  const handleGoBack = () => {
+    navigate(-1) // Go back to previous page
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-lg mx-auto p-4 flex justify-center items-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-700 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading profile data...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-lg mx-auto p-4">
       <button
-        onClick={() => console.log('Go back')}
+        onClick={handleGoBack}
         className="absolute top-4 left-4 rounded-full bg-red-700 p-2 inline-flex items-center justify-center text-white"
         aria-label="Go back"
       >
@@ -153,7 +251,12 @@ const ClientProfileEdit = () => {
           <div className="shrink-0">
             <img
               className="h-16 w-16 object-cover rounded-full"
-              src={userData.profilePicture || "https://static.vecteezy.com/system/resources/previews/047/305/447/non_2x/default-avatar-profile-icon-with-long-shadow-simple-user-sign-symbol-vector.jpg"}
+              src={
+                previewImg ||
+                (userData.profilePicture
+                  ? `http://localhost:3000/uploads/profilePictures/${userData.profilePicture}`
+                  : "https://static.vecteezy.com/system/resources/previews/047/305/447/non_2x/default-avatar-profile-icon-with-long-shadow-simple-user-sign-symbol-vector.jpg")
+              }
               alt="Profile preview"
             />
           </div>
@@ -162,6 +265,7 @@ const ClientProfileEdit = () => {
             <input
               type="file"
               name="profilePicture"
+              onChange={handleFileChange}
               accept="image/*"
               className="block w-full text-sm text-slate-500
                 file:mr-4 file:py-2 file:px-4
@@ -174,7 +278,9 @@ const ClientProfileEdit = () => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="userName" className="block text-lg font-medium text-gray-800 mb-1">User Name</label>
+          <label htmlFor="userName" className="block text-lg font-medium text-gray-800 mb-1">
+            User Name
+          </label>
           <input
             type="text"
             id="userName"
@@ -187,7 +293,9 @@ const ClientProfileEdit = () => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="email" className="block text-lg font-medium text-gray-800 mb-1">Email</label>
+          <label htmlFor="email" className="block text-lg font-medium text-gray-800 mb-1">
+            Email
+          </label>
           <input
             type="email"
             id="email"
@@ -200,7 +308,9 @@ const ClientProfileEdit = () => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="fitnessGoal" className="block text-lg font-medium text-gray-800 mb-1">Fitness Goal</label>
+          <label htmlFor="fitnessGoal" className="block text-lg font-medium text-gray-800 mb-1">
+            Fitness Goal
+          </label>
           <input
             type="text"
             id="fitnessGoal"
@@ -212,7 +322,9 @@ const ClientProfileEdit = () => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="height" className="block text-lg font-medium text-gray-800 mb-1">Height (cm)</label>
+          <label htmlFor="height" className="block text-lg font-medium text-gray-800 mb-1">
+            Height (cm)
+          </label>
           <input
             type="number"
             id="height"
@@ -226,7 +338,9 @@ const ClientProfileEdit = () => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="weight" className="block text-lg font-medium text-gray-800 mb-1">Weight (kg)</label>
+          <label htmlFor="weight" className="block text-lg font-medium text-gray-800 mb-1">
+            Weight (kg)
+          </label>
           <input
             type="number"
             id="weight"
@@ -240,7 +354,9 @@ const ClientProfileEdit = () => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="fitnessLevel" className="block text-lg font-medium text-gray-800 mb-1">Fitness Level</label>
+          <label htmlFor="fitnessLevel" className="block text-lg font-medium text-gray-800 mb-1">
+            Fitness Level
+          </label>
           <select
             id="fitnessLevel"
             name="fitnessLevel"
@@ -256,16 +372,16 @@ const ClientProfileEdit = () => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="description" className="block text-lg font-medium text-gray-800 mb-1">Description</label>
-          <ReactQuill
-            theme="snow"
-            value={userData.description}
-            onChange={handleQuillChange}
-          />
+          <label htmlFor="description" className="block text-lg font-medium text-gray-800 mb-1">
+            Description
+          </label>
+          <ReactQuill theme="snow" value={userData.description || ""} onChange={handleQuillChange} />
         </div>
 
         <div className="mb-6">
-          <label htmlFor="location" className="block text-lg font-medium text-gray-800 mb-1">Location</label>
+          <label htmlFor="location" className="block text-lg font-medium text-gray-800 mb-1">
+            Location
+          </label>
           <input
             type="text"
             id="location"
@@ -287,7 +403,8 @@ const ClientProfileEdit = () => {
         </div>
       </form>
     </div>
-  );
-};
+  )
+}
 
-export default ClientProfileEdit;
+export default ClientProfileEdit
+

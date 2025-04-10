@@ -138,9 +138,6 @@ form {
   transition: background-color 0.3s ease;
 }
 
-/* Button hover effect */
-
-
 /* Paragraph text */
 .container p {
   font-size: 12px;
@@ -232,8 +229,6 @@ form {
   transition: background-color 0.3s ease;
 }
 
-
-
 /* Register button styles */
 .register-btn {
   width: 90px;
@@ -249,4 +244,33 @@ form {
   transition: background-color 0.3s ease;
 }
 
+/* Google Sign-in Button Styles - Updated */
+.google-signin-container {
+  margin-top: 15px;
+  position: relative;
+  width: 100%;
+}
 
+.google-signin-display {
+  display: none; /* Hide our custom display since we'll use the actual Google button */
+}
+
+/* Override Google's button styles to match our design */
+.google-signin-container > div {
+  width: 100% !important;
+  margin-top: 10px !important;
+}
+
+.google-signin-container > div > div {
+  width: 100% !important;
+  border-radius: 6px !important;
+}
+
+/* Make sure Google's button is visible and clickable */
+.google-signin-container iframe {
+  position: static !important;
+  visibility: visible !important;
+  width: 100% !important;
+  height: auto !important;
+  opacity: 1 !important;
+}

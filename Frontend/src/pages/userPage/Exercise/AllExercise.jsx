@@ -9,23 +9,75 @@ const AllExercise = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGoal, setSelectedGoal] = useState("");
+  const [userId, setUserId] = useState(null);
   const navigate = useNavigate();
 
+  // Authentication check when component mounts
   useEffect(() => {
-    const fetchExercises = async () => {
+    // Authentication check
+    const checkAuth = () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found");
+        navigate('/authentication');
+        return false;
+      }
+      
       try {
-        const response = await axios.get("http://localhost:3000/api/exercises");
-        setExercises(response.data.data);
-        setLoading(false);
-      } catch (err) {
-        setError("Failed to fetch exercises");
-        setLoading(false);
-        console.error("Error fetching exercises:", err);
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token:", decodedToken);
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType;
+        
+        console.log("Detected user role:", userRole);
+        
+        // Check if user is a client - be flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'client') {
+          console.log("Access denied: User is not a client");
+          navigate('/authentication');
+          return false;
+        }
+        
+        // User is a client (or we couldn't determine otherwise), set userId and continue
+        setUserId(decodedToken.id);
+        return true;
+      } catch (error) {
+        console.error("Failed to decode token", error);
+        console.error("Token content:", token);
+        navigate('/authentication');
+        return false;
       }
     };
+    
+    // Run auth check
+    checkAuth();
+  }, [navigate]);
 
-    fetchExercises();
-  }, []);
+  useEffect(() => {
+    // Only fetch exercises if authentication was successful and userId is set
+    if (userId) {
+      const fetchExercises = async () => {
+        try {
+          const response = await axios.get("http://localhost:3000/api/exercises");
+          setExercises(response.data.data);
+          setLoading(false);
+        } catch (err) {
+          setError("Failed to fetch exercises");
+          setLoading(false);
+          console.error("Error fetching exercises:", err);
+        }
+      };
+  
+      fetchExercises();
+    }
+  }, [userId]);
 
   // Filter exercises based on search term and selected goal
   const filteredExercises = exercises.filter((exercise) => {
@@ -59,8 +111,10 @@ const AllExercise = () => {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-96 px-4">
+   
         <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-lg max-w-2xl w-full">
           <div className="flex items-center">
+            
             <div className="flex-shrink-0">
               <svg
                 className="h-8 w-8 text-red-500"
@@ -95,6 +149,7 @@ const AllExercise = () => {
     <div className="bg-gray-50 min-h-screen pb-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
+          <h1>Select the Exercise of your wants!</h1>
           <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight sm:text-5xl">Exercise Library</h1>
           <p className="mt-4 text-xl text-gray-500 max-w-3xl mx-auto">
             Discover exercises tailored to your fitness goals and level

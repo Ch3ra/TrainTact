@@ -222,7 +222,7 @@ const PaymentSuccess = () => {
               Browse More Trainers
             </button>
             <button 
-              onClick={() => navigate('/dashboard')} 
+              onClick={() => navigate('/clientDash')} 
               className="px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex-1"
             >
               Go to Dashboard

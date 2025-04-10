@@ -1,78 +1,120 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { Loader2, Edit, Trash2, Plus } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+"use client"
+
+import { useState, useEffect } from "react"
+import { Link, useNavigate } from "react-router-dom"
+import axios from "axios"
+import { Loader2, Edit, Trash2, Plus } from "lucide-react"
+import { toast } from "react-hot-toast"
+import TrainerLayout from "../../../TrainerPage/TrainerLayout"
 
 const MyExercise = () => {
-  const [exercises, setExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [userId, setUserId] = useState(null);
-  const navigate = useNavigate();
+  const [exercises, setExercises] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [userId, setUserId] = useState(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
-    // Get user ID from token
-    const token = localStorage.getItem("token");
-    if (token) {
+    // Authentication check
+    const checkAuth = () => {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found in MyExercise")
+        setError("Please log in to view your exercises")
+        setLoading(false)
+        navigate("/authentication")
+        return false
+      }
+
       try {
-        const decodedToken = JSON.parse(atob(token.split(".")[1]));
-        setUserId(decodedToken.id);
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]))
+
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token in MyExercise:", decodedToken)
+
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole =
+          decodedToken.role ||
+          decodedToken.userRole ||
+          decodedToken.userType ||
+          decodedToken.type ||
+          decodedToken.accountType
+
+        console.log("Detected user role in MyExercise:", userRole)
+
+        // Check if user is a trainer - be more flexible with role naming
+        if (userRole && userRole.toLowerCase() !== "trainer") {
+          console.log("Access denied in MyExercise: User is not a trainer")
+          setError("Only trainers can access exercise programs")
+          setLoading(false)
+          navigate("/authentication")
+          return false
+        }
+
+        // User is a trainer, set userId and continue
+        setUserId(decodedToken.id)
 
         // Fetch exercises created by this user
-        fetchUserExercises(decodedToken.id);
+        fetchUserExercises(decodedToken.id)
+        return true
       } catch (error) {
-        console.error("Error decoding token:", error);
-        setError("Authentication error. Please log in again.");
-        setLoading(false);
+        console.error("Failed to decode token in MyExercise", error)
+        console.error("Token content:", token)
+        setError("Authentication error. Please log in again.")
+        setLoading(false)
+        navigate("/authentication")
+        return false
       }
-    } else {
-      setError("Please log in to view your exercises");
-      setLoading(false);
     }
-  }, []);
+
+    // Run auth check
+    checkAuth()
+  }, [navigate])
 
   const fetchUserExercises = async (userId) => {
     try {
-      setLoading(true);
-      const token = localStorage.getItem("token");
+      setLoading(true)
+      const token = localStorage.getItem("token")
       const response = await axios.get(`http://localhost:3000/api/exercises?userId=${userId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      });
-      setExercises(response.data.data);
-      setLoading(false);
+      })
+      setExercises(response.data.data)
+      setLoading(false)
     } catch (err) {
-      setError("Failed to fetch your exercises");
-      setLoading(false);
-      console.error("Error fetching exercises:", err);
+      setError("Failed to fetch your exercises")
+      setLoading(false)
+      console.error("Error fetching exercises:", err)
     }
-  };
+  }
 
   const handleEditExercise = (exerciseId) => {
-    navigate('/exerciseEditForm', { state: { exerciseId } });
-  };
+    navigate("/exerciseEditForm", { state: { exerciseId } })
+  }
 
   const handleDeleteExercise = async (exerciseId) => {
     if (window.confirm("Are you sure you want to delete this exercise program?")) {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("token")
         await axios.delete(`http://localhost:3000/api/exercises/${exerciseId}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        });
-        
+        })
+
         // Remove from state
-        setExercises(exercises.filter(exercise => exercise._id !== exerciseId));
-        toast.success("Exercise program deleted successfully");
+        setExercises(exercises.filter((exercise) => exercise._id !== exerciseId))
+        toast.success("Exercise program deleted successfully")
       } catch (error) {
-        console.error("Error deleting exercise:", error);
-        toast.error("Failed to delete exercise program");
+        console.error("Error deleting exercise:", error)
+        toast.error("Failed to delete exercise program")
       }
     }
-  };
+  }
 
   if (loading) {
     return (
@@ -80,7 +122,7 @@ const MyExercise = () => {
         <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
         <div className="text-xl font-medium text-gray-700">Loading your exercises...</div>
       </div>
-    );
+    )
   }
 
   if (error) {
@@ -109,11 +151,11 @@ const MyExercise = () => {
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <TrainerLayout className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">My Exercise Programs</h1>
         <Link
@@ -145,7 +187,8 @@ const MyExercise = () => {
           {exercises.map((exercise) => (
             <div
               key={exercise._id}
-              className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow"
+              className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
+              onClick={() => navigate(`/exercise/${exercise._id}`, { state: { exerciseData: exercise } })}
             >
               {exercise.cardPhoto ? (
                 <div className="h-48 overflow-hidden">
@@ -154,7 +197,7 @@ const MyExercise = () => {
                     alt={`Exercise: ${exercise.exerciseGoal || "Fitness training"}`}
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      e.currentTarget.src = "/placeholder.svg?height=192&width=384";
+                      e.currentTarget.src = "/placeholder.svg?height=192&width=384"
                     }}
                   />
                 </div>
@@ -180,9 +223,7 @@ const MyExercise = () => {
                   )}
                 </div>
 
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Exercise Program
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Exercise Program</h3>
 
                 <p className="text-gray-600 text-sm mb-4">
                   A 7-day exercise program with {exercise.days ? exercise.days.length : 0} active days
@@ -192,17 +233,23 @@ const MyExercise = () => {
                   <span className="text-sm text-gray-500">
                     Created {new Date(exercise.createdAt).toLocaleDateString()}
                   </span>
-                  
+
                   <div className="flex space-x-2">
                     <button
-                      onClick={() => handleEditExercise(exercise._id)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleEditExercise(exercise._id)
+                      }}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
                       title="Edit"
                     >
                       <Edit size={18} />
                     </button>
                     <button
-                      onClick={() => handleDeleteExercise(exercise._id)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteExercise(exercise._id)
+                      }}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-full transition-colors"
                       title="Delete"
                     >
@@ -215,8 +262,9 @@ const MyExercise = () => {
           ))}
         </div>
       )}
-    </div>
-  );
-};
+    </TrainerLayout>
+  )
+}
 
-export default MyExercise;
+export default MyExercise
+

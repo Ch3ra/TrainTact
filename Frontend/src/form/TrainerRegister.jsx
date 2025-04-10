@@ -13,6 +13,8 @@ const RegistrationForm = () => {
     username: "",
     password: "",
     yearsOfExperience: "",
+    age: "",
+    bibliography: "",
     resume: null,
     profilePicture: null, // Initialize for profile picture
   });
@@ -130,16 +132,46 @@ const RegistrationForm = () => {
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Years of experience
+              </label>
+              <input
+                type="number"
+                name="yearsOfExperience"
+                onChange={handleChange}
+                className="border rounded-md p-2 w-full h-8 text-sm"
+                min="0"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Age
+              </label>
+              <input
+                type="number"
+                name="age"
+                onChange={handleChange}
+                className="border rounded-md p-2 w-full h-8 text-sm"
+                min="18"
+                required
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              Years of experience
+              Bibliography
             </label>
-            <input
-              type="number"
-              name="yearsOfExperience"
+            <textarea
+              name="bibliography"
               onChange={handleChange}
-              className="border rounded-md p-2 w-full h-8 text-sm"
-              min="0"
+              className="border rounded-md p-2 w-full text-sm"
+              rows="3"
+              placeholder="Share your professional background and achievements"
               required
             />
           </div>
@@ -161,8 +193,6 @@ const RegistrationForm = () => {
               required
             />
           </div>
-
-          
 
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">

@@ -1,18 +1,58 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, Mail, UserCircle } from 'lucide-react';
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from 'axios';
 
 const TrainerNavbar = () => {
   const [trainerDetails, setTrainerDetails] = useState(null);
+  const navigate = useNavigate();
   
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      fetchTrainerDetails(decodedToken.id);
-    }
-  }, []);
+    // Authentication check
+    const checkAuth = () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found in TrainerNavbar");
+        navigate('/authentication');
+        return false;
+      }
+      
+      try {
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token in NavBar:", decodedToken);
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType;
+        
+        console.log("Detected user role in NavBar:", userRole);
+        
+        // Check if user is a trainer - be more flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'trainer') {
+          console.log("Access denied in NavBar: User is not a trainer");
+          navigate('/authentication');
+          return false;
+        }
+        
+        // User is a trainer, fetch trainer details
+        fetchTrainerDetails(decodedToken.id);
+        return true;
+      } catch (error) {
+        console.error("Failed to decode token in NavBar", error);
+        console.error("Token content:", token);
+        navigate('/authentication');
+        return false;
+      }
+    };
+    
+    // Run auth check
+    checkAuth();
+  }, [navigate]);
 
   const fetchTrainerDetails = async (id) => {
     try {

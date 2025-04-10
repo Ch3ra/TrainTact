@@ -10,6 +10,9 @@ class SocketService {
     this.videoListeners = new Map()
     this.activeCallId = null
     this.notificationListeners = new Map()
+    this.baseUrl = "http://localhost:3000" // Add base URL for consistent file paths
+    this.pendingSignals = new Map() // Track pending signals to avoid duplicates
+    this.signalTimeouts = new Map() // Track timeouts for signals
   }
 
   // ==================== Notification Methods ====================
@@ -56,6 +59,21 @@ class SocketService {
   handleVideoAnswer(callback) {
     this._addVideoListener("answer", (data) => {
       console.log("Received answer signal:", data.from)
+
+      // Deduplicate answers - only process each answer once
+      const signalId = `answer-${data.from}-${Date.now()}`
+      if (this.pendingSignals.has(signalId)) {
+        console.log("Ignoring duplicate answer signal")
+        return
+      }
+
+      this.pendingSignals.set(signalId, true)
+
+      // Clear the signal after processing
+      setTimeout(() => {
+        this.pendingSignals.delete(signalId)
+      }, 5000)
+
       callback(data)
     })
   }
@@ -82,7 +100,7 @@ class SocketService {
     this._addVideoListener("callEnded", callback)
   }
 
-  // Signaling transmission
+  // Signaling transmission with debouncing and deduplication
   sendSignal(type, data) {
     if (!this.socket) return
 
@@ -93,8 +111,26 @@ class SocketService {
       from: data.from || this.userId,
     }
 
-    console.log(`Sending ${type} signal to: ${data.to || "call room"}, from: ${payload.from}`)
-    this.socket.emit(type, payload)
+    // Create a unique ID for this signal to prevent duplicates
+    const signalId = `${type}-${payload.to}-${Date.now()}`
+
+    // Clear any existing timeout for this signal type
+    if (this.signalTimeouts.has(type)) {
+      clearTimeout(this.signalTimeouts.get(type))
+    }
+
+    // Set a new timeout to debounce rapid signals of the same type
+    this.signalTimeouts.set(
+      type,
+      setTimeout(
+        () => {
+          console.log(`Sending ${type} signal to: ${data.to || "call room"}, from: ${payload.from}`)
+          this.socket.emit(type, payload)
+          this.signalTimeouts.delete(type)
+        },
+        type === "iceCandidate" ? 0 : 100,
+      ),
+    ) // No delay for ICE candidates, small delay for others
   }
 
   endCall(callId) {
@@ -177,7 +213,18 @@ class SocketService {
   }
 
   onMessage(callback) {
-    this._addListener("getMessage", callback)
+    this._addListener("getMessage", (data) => {
+      // Ensure file URLs are properly formatted
+      if (data.files && data.files.length > 0) {
+        data.files = data.files.map((file) => {
+          if (file.url && !file.url.startsWith("http")) {
+            file.url = `${this.baseUrl}/${file.path || file.url.replace(/^\//, "")}`
+          }
+          return file
+        })
+      }
+      callback(data)
+    })
   }
 
   // ==================== Typing Indicators ====================

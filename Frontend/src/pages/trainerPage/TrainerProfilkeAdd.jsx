@@ -3,7 +3,8 @@ import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { Calendar, ArrowLeft, ChevronDown, Clock } from 'lucide-react';
 import { useNavigate } from "react-router-dom";
-import axios from 'axios'; // Ensure axios is installed
+import axios from 'axios';
+import { toast } from "react-hot-toast"; // Assuming you're using react-hot-toast for notifications
 
 const TrainerProfileAdd = () => {
   const [userId, setUserId] = useState('');
@@ -12,12 +13,54 @@ const TrainerProfileAdd = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      setUserId(decodedToken.id); // Setting userId in state
-    }
-  }, []);
+    // Authentication check
+    const checkAuth = () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found in TrainerProfileAdd");
+        toast.error("Please log in to access this page");
+        navigate('/authentication');
+        return false;
+      }
+      
+      try {
+        // Decode token to check role
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token in TrainerProfileAdd:", decodedToken);
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType;
+        
+        console.log("Detected user role in TrainerProfileAdd:", userRole);
+        
+        // Check if user is a trainer - be more flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'trainer') {
+          console.log("Access denied in TrainerProfileAdd: User is not a trainer");
+          toast.error("Only trainers can access this page");
+          navigate('/authentication');
+          return false;
+        }
+        
+        // User is a trainer, set userId and continue
+        setUserId(decodedToken.id);
+        return true;
+      } catch (error) {
+        console.error("Failed to decode token in TrainerProfileAdd", error);
+        console.error("Token content:", token);
+        toast.error("Authentication error. Please log in again.");
+        navigate('/authentication');
+        return false;
+      }
+    };
+    
+    // Run auth check
+    checkAuth();
+  }, [navigate]);
 
   const handleContentChange = (value) => {
     setContent(value);
@@ -36,6 +79,12 @@ const TrainerProfileAdd = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!userId) {
+      toast.error("User authentication required");
+      return;
+    }
+    
     const formData = new FormData();
     formData.append('price', e.target.price.value);
     formData.append('availabilityHours', e.target.availableHours.value);
@@ -51,21 +100,19 @@ const TrainerProfileAdd = () => {
       const response = await axios.post(`http://localhost:3000/api/trainer/add/${userId}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` // Assuming your backend uses Bearer token
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
       console.log(response.data);
       
       // Check if status is 200 and navigate to trainerdash
       if (response.status === 200) {
-        // Using window.location for navigation
-        window.location.href = '/trainerdash';
-        
-        // Alternatively, if you're using React Router:
-        // navigate('/trainerdash');
+        toast.success("Profile updated successfully!");
+        navigate('/trainerdash');
       }
     } catch (error) {
       console.error('Error submitting form:', error);
+      toast.error(error.response?.data?.message || "Failed to update profile");
     }
   };
 
@@ -136,7 +183,7 @@ const TrainerProfileAdd = () => {
   </label>
   <div className="relative">
     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-      <Clock className="h-5 w-5 text-gray-400" /> {/* Assuming Clock icon is available in your icons package */}
+      <Clock className="h-5 w-5 text-gray-400" />
     </div>
     <select
       id="availableHours"
@@ -152,7 +199,7 @@ const TrainerProfileAdd = () => {
       <option value="night">Night</option>
     </select>
     <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-      <ChevronDown className="h-5 w-5 text-gray-400" /> {/* Ensure ChevronDown icon is correctly imported */}
+      <ChevronDown className="h-5 w-5 text-gray-400" />
     </div>
   </div>
 </div>

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Camera, Video, X, SendHorizontal, Loader2 } from "lucide-react"
 import axios from "axios"
 import { toast } from "react-hot-toast"
+import { useNavigate } from "react-router-dom"
 
 const ExerciseProgramBuilder = () => {
   const [activeTab, setActiveTab] = useState("details")
@@ -25,22 +26,60 @@ const ExerciseProgramBuilder = () => {
       { dayNumber: 7, activities: "" },
     ],
   })
+  const navigate = useNavigate()
 
   const photoInputRef = useRef(null)
   const videoInputRef = useRef(null)
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (token) {
+    // Authentication check
+    const checkAuth = () => {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        // No token found, redirect to login
+        console.log("No token found in ExerciseProgramBuilder")
+        toast.error("Please log in to access this page")
+        navigate('/authentication')
+        return false
+      }
+      
       try {
+        // Decode token to check role
         const decodedToken = JSON.parse(atob(token.split(".")[1]))
+        
+        // Debug: Log the token structure to see what fields are available
+        console.log("Decoded token in ExerciseProgramBuilder:", decodedToken)
+        
+        // The role field might be named differently (like userType, accountType, etc.)
+        // Check for common variations that might represent user role
+        const userRole = decodedToken.role || decodedToken.userRole || decodedToken.userType || 
+                         decodedToken.type || decodedToken.accountType
+        
+        console.log("Detected user role in ExerciseProgramBuilder:", userRole)
+        
+        // Check if user is a trainer - be more flexible with role naming
+        if (userRole && userRole.toLowerCase() !== 'trainer') {
+          console.log("Access denied in ExerciseProgramBuilder: User is not a trainer")
+          toast.error("Only trainers can create exercise programs")
+          navigate('/authentication')
+          return false
+        }
+        
+        // User is a trainer, set userId and continue
         setUserId(decodedToken.id)
+        return true
       } catch (error) {
-        console.error("Error decoding token:", error)
+        console.error("Failed to decode token in ExerciseProgramBuilder", error)
+        console.error("Token content:", token)
         toast.error("Authentication error. Please log in again.")
+        navigate('/authentication')
+        return false
       }
     }
-  }, [])
+    
+    // Run auth check
+    checkAuth()
+  }, [navigate])
 
   const handlePhotoChange = (e) => {
     const file = e.target.files[0]
@@ -364,4 +403,3 @@ const ExerciseProgramBuilder = () => {
 }
 
 export default ExerciseProgramBuilder
-

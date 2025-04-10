@@ -11,6 +11,10 @@ const trainerSchema = new mongoose.Schema(
       type: Number,
       // required: [true, "Years of experience is required"]
     },
+    bibliography: {
+      type: String,
+      // required: [true, "Bibliography is required"]
+    },
     price: {
       type: Number,
       // required: [true, "Price per session is required"],
@@ -33,16 +37,20 @@ const trainerSchema = new mongoose.Schema(
       type: String,
       // required: [true, "End day is required"],
       enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    
     },
     coverPhoto: {
       type: String,
       // required: [true, "Cover photo is required"]
     },
-  advancedNeeded:{
-    type: Boolean,
-    default: false,
-  }
+    resume: {
+      type: String,
+      // You can uncomment if you want to make it required
+      // required: [true, "Resume is required"]
+    },
+    advancedNeeded: {
+      type: Boolean,
+      default: false,
+    }
   },
   { timestamps: true }
 );

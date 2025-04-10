@@ -11,21 +11,36 @@ const clientSchema = new mongoose.Schema(
     height: {
       type: Number,
       required: true,
-      min: [0, 'Height cannot be negative']  // Set a minimum value with an error message
+      min: [0, 'Height cannot be negative']  
     },
     weight: {
       type: Number,
       required: true,
-      min: [0, 'Weight cannot be negative']  // Set a minimum value with an error message
+      min: [0, 'Weight cannot be negative']  
     },
     fitnessLevel: {
       type: String,
       required: true,
-      enum: ['Beginner', 'Intermediate', 'Advanced'],  // Use an enum to limit the values to specific options
+      enum: ['Beginner', 'Intermediate', 'Advanced'], 
     },description: {
       type: String,
-      default: ''  // Optional: provide a default empty string if no description is provided
-    }
+      default: '' 
+    },  selectedExercises: [
+      {
+        exercise: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Exercise'
+        },
+        startDate: {
+          type: Date,
+          default: Date.now
+        },
+        active: {
+          type: Boolean,
+          default: true
+        }
+      }
+    ]
   },
   { timestamps: true }
 );

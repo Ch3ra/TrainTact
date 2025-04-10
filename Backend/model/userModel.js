@@ -4,6 +4,7 @@ const userSchema = new mongoose.Schema({
   userName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String },
+  age: { type: Number },
   role: { type: String, enum: ["Trainer", "Client", "Admin"], default: "Client" }, 
   profilePicture: { type: String },
   isOtpVerified: { type: Boolean, default: false }, 
@@ -16,8 +17,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
-  
-  
-});
+}, { timestamps: true }); // This adds createdAt and updatedAt fields
 
 module.exports = mongoose.model("User", userSchema);
