@@ -7,6 +7,7 @@ import { Bell, Mail, ArrowLeft, Star, MessageCircle, Video, Calendar, Clock, Che
 import { useNotifications } from "../../Notification/NotificationContext"
 import NotificationPanel from "../../Notification/NotificationPannel"
 import { toast } from "react-hot-toast" // Import toast for notifications if you're using it
+import Navbar from "../../public/components/Navbar"
 
 const MyTrainer = () => {
   const [clientTrainers, setClientTrainers] = useState([])
@@ -240,85 +241,17 @@ const MyTrainer = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white p-4 flex items-center justify-between border-b">
-        <div className="flex items-center space-x-2">
-          <span className="text-red-600 font-bold text-xl">Train</span>
-          <span className="font-bold text-xl">Tact</span>
-        </div>
-        <div className="flex items-center space-x-6">
-          <div className="relative group cursor-pointer" onClick={toggleNotifications}>
-            <Bell className="w-6 h-6 text-gray-600 hover:text-gray-800 transition-colors duration-200" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full animate-pulse">
-                {unreadCount}
-              </span>
-            )}
-            <NotificationPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
-          </div>
-          <div className="relative group cursor-pointer">
-            <Link to="/chat">
-              <Mail className="h-6 w-6 hover:text-red-600 cursor-pointer" />
-            </Link>
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full">
-              2
-            </span>
-          </div>
-          <div className="relative cursor-pointer">
-            <img
-              src={
-                profileData.profilePicture 
-                  ? `http://localhost:3000/uploads/profilePictures/${profileData.profilePicture}`
-                  : "/placeholder.svg"
-              }
-              alt="Profile"
-              className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-100 hover:ring-gray-200 transition-all duration-200"
-              onError={(e) => {
-                e.target.src = "/placeholder.svg";
-              }}
-            />
-          </div>
-        </div>
-      </header>
+         <Navbar />
+      
 
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-52 bg-white h-screen p-4 border-r">
-          <nav className="space-y-4">
-            <Link to="/clientDash">
-              <div className="flex items-center space-x-3 cursor-pointer p-3 rounded-lg">
-                <span>Home</span>
-              </div>
-            </Link>
-            <Link to="/profile">
-              <div className="flex items-center space-x-3 cursor-pointer p-3 rounded-lg">
-                <div className="w-6 h-6">👤</div>
-                <span>Profile</span>
-              </div>
-            </Link>
-            <div className="flex items-center cursor-pointer space-x-3 p-3 bg-blue-50 rounded-lg text-red-600">
-              <div className="w-6 h-6">💪</div>
-              <span>My Trainers</span>
-            </div>
-            <div className="flex items-center cursor-pointer space-x-3 p-3">
-              <div className="w-6 h-6">💳</div>
-              <span>Payments</span>
-            </div>
-            <div 
-              className="flex items-center cursor-pointer space-x-3 p-3"
-              onClick={handleLogout}
-            >
-              <div className="w-6 h-6">🚪</div>
-              <span>Logout</span>
-            </div>
-          </nav>
-        </aside>
+       
 
         {/* Main Content */}
         <main className="flex-1 p-8">
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-2xl font-bold">My Trainers</h1>
-            <Link to="/clientDash">
+            
+            <Link to="/userProfile">
               <ArrowLeft className="w-6 h-6 cursor-pointer hover:bg-gray-100 rounded-full p-1" />
             </Link>
           </div>
@@ -331,7 +264,7 @@ const MyTrainer = () => {
             <>
               {/* Current Trainers */}
               <div className="mb-10">
-                <h2 className="text-xl font-semibold mb-6">My Current Trainers</h2>
+                <h2 className="text-xl font-semibold mb-6">My Trainer's</h2>
                 {clientTrainers.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {clientTrainers.map((trainer) => (
@@ -417,14 +350,14 @@ const MyTrainer = () => {
 
                           <div className="flex space-x-2">
                             <Link 
-                              to={`/chat/${trainer._id}`} 
+                              to='/chat' 
                               className="flex-1 flex items-center justify-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-800 py-2 px-3 rounded-md text-sm"
                             >
                               <MessageCircle size={16} />
                               Message
                             </Link>
                             <Link 
-                              to={`/book/${trainer._id}`}
+                              to='/trainerExplore'
                               className="flex-1 flex items-center justify-center gap-1 bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm"
                             >
                               Book Session

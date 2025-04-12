@@ -5,6 +5,7 @@ const {
   getRecentTransactions,
   updatePaymentStatus,
   exportPaymentData,
+  processDirectPayment,
 } = require("../controller/payment/paymentController")
 
 const router = require("express").Router()
@@ -21,5 +22,7 @@ router.get("/transactions", getRecentTransactions)
 router.put("/status/:bookingId", updatePaymentStatus)
 router.get("/export", exportPaymentData)
 
-module.exports = router
+// NEW: Direct payment route
+router.post("/direct/:bookingId", processDirectPayment)
 
+module.exports = router

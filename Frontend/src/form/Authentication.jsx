@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./Authentication.css";
 import { Link, useNavigate } from "react-router-dom";
 import { GoogleLogin } from '@react-oauth/google';
@@ -8,6 +8,13 @@ import axios from "axios";
 const Authentication = () => {
   const [isActive, setIsActive] = useState(false);
   const navigate = useNavigate();
+
+  // Clear all localStorage data when component mounts
+  useEffect(() => {
+    // Clear all items from localStorage
+    localStorage.clear();
+    console.log("Cleared all data from localStorage on authentication page load");
+  }, []);
 
   const toggleForm = () => {
     setIsActive(!isActive);

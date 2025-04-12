@@ -3,6 +3,7 @@ const User = require("../../model/userModel")
 const Message = require("../../model/messageModel")
 const fs = require("fs")
 const path = require("path")
+const WorkoutSchedule = require("../../model/AvailabilityModel")
 
 let io
 
@@ -382,6 +383,90 @@ const deleteMessage = async (req, res) => {
   }
 }
 
+// Function to handle workout completion and conversation cleanup
+const handleWorkoutCompletion = async (workoutId) => {
+  try {
+    const workout = await WorkoutSchedule.findById(workoutId);
+    if (!workout) {
+      console.log(`Workout ${workoutId} not found`);
+      return false;
+    }
+
+    if (workout.status === 'completed') {
+      const result = await cleanupConversation(workout.clientId, workout.trainerId);
+      return result;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error handling workout completion:", error);
+    return false;
+  }
+};
+
+// Function to check if there are any active sessions between client and trainer
+const hasActiveSessions = async (clientId, trainerId) => {
+  try {
+    console.log(`Checking active sessions for client ${clientId} and trainer ${trainerId}`);
+    
+    const activeSessions = await WorkoutSchedule.find({
+      clientId,
+      trainerId,
+      status: { $in: ['upcoming', 'ongoing'] }
+    });
+
+    console.log(`Found ${activeSessions.length} active sessions`);
+    if (activeSessions.length > 0) {
+      console.log('Active sessions:', activeSessions.map(s => ({
+        id: s._id,
+        status: s.status,
+        startDate: s.startDate,
+        endDate: s.endDate
+      })));
+    }
+
+    return activeSessions.length > 0;
+  } catch (error) {
+    console.error("Error checking active sessions:", error);
+    return false;
+  }
+};
+
+// Function to remove conversation if no active sessions exist
+const cleanupConversation = async (clientId, trainerId) => {
+  try {
+    console.log(`Attempting to cleanup conversation for client ${clientId} and trainer ${trainerId}`);
+    
+    const hasActive = await hasActiveSessions(clientId, trainerId);
+    console.log(`Has active sessions: ${hasActive}`);
+
+    if (!hasActive) {
+      // Find and delete the conversation
+      const conversation = await Conversation.findOne({
+        members: { $all: [clientId, trainerId] }
+      });
+
+      if (conversation) {
+        console.log(`Found conversation to delete: ${conversation._id}`);
+        
+        // Delete all messages in the conversation
+        const messageResult = await Message.deleteMany({ conversation: conversation._id });
+        console.log(`Deleted ${messageResult.deletedCount} messages`);
+        
+        // Delete the conversation
+        await Conversation.findByIdAndDelete(conversation._id);
+        console.log(`Conversation ${conversation._id} removed successfully`);
+        return true;
+      } else {
+        console.log('No conversation found to delete');
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error("Error cleaning up conversation:", error);
+    return false;
+  }
+};
+
 module.exports = {
   initializeSocket,
   createConversation,
@@ -390,4 +475,5 @@ module.exports = {
   markMessagesAsRead,
   getConversations,
   deleteMessage,
+  handleWorkoutCompletion,
 }

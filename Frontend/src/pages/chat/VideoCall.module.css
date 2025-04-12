@@ -1,0 +1,328 @@
+.videoCallContainer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans",
+    "Helvetica Neue", sans-serif;
+}
+
+/* Keep the video grid layout but with better spacing */
+.videoGrid {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: 1200px;
+  padding: 1.5rem;
+}
+
+/* Update the video wrapper with more modern styling */
+.videoWrapper {
+  position: relative;
+  background: #1a1a1a;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: 100%;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Improve the local video styling */
+.localVideo {
+  position: absolute;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  width: 240px;
+  height: 180px;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.localVideo:hover {
+  transform: scale(1.05);
+}
+
+/* Keep the remote video styling */
+.remoteVideo {
+  width: 100%;
+  height: 100%;
+}
+
+/* Keep the video element styling */
+.videoElement {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Update the controls bar with a more modern look */
+.controlsBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  padding: 1.5rem;
+  display: flex;
+  justify-content: center;
+  gap: 1.25rem;
+  transition: opacity 0.3s ease;
+}
+
+/* Update the control buttons with a more modern look */
+.controlButton {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: white;
+  backdrop-filter: blur(4px);
+}
+
+.controlButton:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-3px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.controlButton.danger {
+  background: rgba(220, 38, 38, 0.8);
+}
+
+.controlButton.danger:hover {
+  background: rgba(220, 38, 38, 1);
+}
+
+/* Update the incoming call notification with a more modern look */
+.incomingCall {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 1rem;
+  padding: 1.75rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+  min-width: 320px;
+  max-width: 90%;
+}
+
+/* Update the caller info styling */
+.callerInfo {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+/* Update the caller avatar styling */
+.callerAvatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #f3f4f6;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Update the caller name styling */
+.callerName {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Update the call status styling */
+.callStatus {
+  font-size: 0.95rem;
+  color: #4b5563;
+}
+
+/* Update the call actions styling */
+.callActions {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+}
+
+/* Update the accept button styling */
+.acceptButton {
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+  font-size: 1rem;
+}
+
+.acceptButton:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Update the decline button styling */
+.declineButton {
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+  font-size: 1rem;
+}
+
+.declineButton:hover {
+  background: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Update the animation for a smoother appearance */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* Add a pulse animation for the incoming call */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+/* Add a new class for the incoming call icon */
+.incomingCallIcon {
+  width: 80px;
+  height: 80px;
+  background: #f0fdf4;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+  animation: pulse 2s infinite;
+}
+.incomingCall {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 300px;
+  z-index: 1000;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans",
+    "Helvetica Neue", sans-serif;
+}
+
+.incomingCall h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.callActions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.acceptButton {
+  background: #22c55e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 0;
+  font-weight: 500;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  flex: 1;
+}
+
+.acceptButton:hover {
+  background: #16a34a;
+}
+
+.declineButton {
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 0;
+  font-weight: 500;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  flex: 1;
+}
+
+.declineButton:hover {
+  background: #dc2626;
+}
+
+/* Animation for the dialog appearance */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -60%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+.incomingCall {
+  animation: fadeIn 0.3s ease-out;
+}
+

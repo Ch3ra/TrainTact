@@ -18,6 +18,9 @@ import {
   FileText,
   CreditCard,
   Loader2,
+  AlertCircle,
+  X,
+  UserPlus,
 } from "lucide-react"
 import axios from "axios"
 import { Link, useNavigate } from "react-router-dom"
@@ -36,6 +39,8 @@ const UserProfile = () => {
   const [loadingExercises, setLoadingExercises] = useState(false)
   const [isLoading, setIsLoading] = useState(true) // New loading state for initial data
   const [selectedExercise, setSelectedExercise] = useState(null)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [missingProfileFields, setMissingProfileFields] = useState([])
 
   // Add state for selected programs
   const [selectedPrograms, setSelectedPrograms] = useState([])
@@ -140,12 +145,31 @@ const UserProfile = () => {
     }
   }, [userId])
 
+  // Fixed fetchProfileData function to only show modal when fields are actually missing
   const fetchProfileData = async (userId) => {
     try {
       setIsLoading(true) // Start loading
       const response = await axios.get(`http://localhost:3000/api/client/${userId}`)
       if (response.data) {
-        setProfileData({ ...response.data.user, ...response.data.clientDetails })
+        const profileData = { ...response.data.user, ...response.data.clientDetails }
+        setProfileData(profileData)
+
+        // Check for missing profile fields
+        const missingFields = []
+        if (!profileData.height) missingFields.push("height")
+        if (!profileData.weight) missingFields.push("weight")
+        if (!profileData.location) missingFields.push("location")
+        if (!profileData.description) missingFields.push("description")
+
+        console.log("Missing fields:", missingFields)
+        setMissingProfileFields(missingFields)
+
+        // Only show the modal if there are actually missing fields
+        if (missingFields.length > 0) {
+          setShowProfileModal(true)
+        } else {
+          setShowProfileModal(false)
+        }
       }
     } catch (error) {
       console.error("Failed to fetch profile data:", error)
@@ -418,6 +442,15 @@ const UserProfile = () => {
     })
   }
 
+  // New function to handle adding profile details - FIXED to use /addProfile instead of /editprofile
+  const handleAddProfileDetails = () => {
+    navigate("/addProfile")
+    toast.success("Let's complete your profile details!", {
+      duration: 3000,
+      icon: "👤",
+    })
+  }
+
   // Format date for display
   const formatDate = (dateString) => {
     if (!dateString) return ""
@@ -443,9 +476,66 @@ const UserProfile = () => {
     setSelectedExercise(null)
   }
 
+  const handleFillProfileNow = () => {
+    setShowProfileModal(false)
+    navigate("/addProfile") // FIXED: Changed from /editprofile to /addProfile
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+
+      {/* Profile Completion Modal - Only shown when there are missing fields */}
+      {showProfileModal && missingProfileFields.length > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative">
+            <button
+              onClick={() => setShowProfileModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-red-100 p-2 rounded-full">
+                <AlertCircle className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800">Complete Your Profile</h3>
+            </div>
+
+            <p className="text-gray-600 mb-4">
+              Your profile is incomplete. Adding these details will help trainers provide better personalized programs
+              for you.
+            </p>
+
+            {missingProfileFields.length > 0 && (
+              <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm font-medium text-gray-700 mb-2">Missing information:</p>
+                <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
+                  {missingProfileFields.map((field, index) => (
+                    <li key={index}>{field.charAt(0).toUpperCase() + field.slice(1)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex gap-4 mt-6">
+              <button
+                onClick={handleFillProfileNow}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors"
+              >
+                Fill Now
+              </button>
+              <button
+                onClick={() => setShowProfileModal(false)}
+                className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-lg font-medium transition-colors"
+              >
+                Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notification Panel */}
       <NotificationPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
@@ -460,13 +550,22 @@ const UserProfile = () => {
                   <h2 className="text-2xl font-bold text-gray-900">Client Profile</h2>
                   <p className="text-gray-500">Personal information</p>
                 </div>
-                <button
-                  onClick={handleEditProfile}
-                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-1"
-                >
-                  <Pen size={14} />
-                  Edit Profile
-                </button>
+                <div className="flex gap-2">
+                  {/* Add Profile Button - Always visible and using the correct path */}
+                  <Link to="/addProfile">
+                    <button className="px-3 py-1.5 bg-[#CE0000] text-white rounded-md text-sm font-medium hover:bg-[#b00000] transition-colors flex items-center gap-1">
+                      <UserPlus size={14} />
+                      Add Profile
+                    </button>
+                  </Link>
+                  <button
+                    onClick={handleEditProfile}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-1"
+                  >
+                    <Pen size={14} />
+                    Edit Profile
+                  </button>
+                </div>
               </div>
 
               {isLoading ? (
@@ -533,11 +632,36 @@ const UserProfile = () => {
                     )}
                   </div>
 
+                  {/* Missing Profile Fields Alert */}
+                  {missingProfileFields.length > 0 && (
+                    <div className="mt-6 p-4 bg-red-50 rounded-lg border border-red-100">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-red-800 mb-1">Complete your profile</h4>
+                          <p className="text-sm text-red-700 mb-2">Your profile is missing some important details:</p>
+                          <ul className="list-disc pl-5 text-sm text-red-700 space-y-0.5">
+                            {missingProfileFields.map((field, index) => (
+                              <li key={index}>{field.charAt(0).toUpperCase() + field.slice(1)}</li>
+                            ))}
+                          </ul>
+                          <button
+                            onClick={handleAddProfileDetails}
+                            className="mt-3 px-3 py-1.5 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-1 w-full justify-center"
+                          >
+                            <UserPlus size={14} />
+                            Add Missing Details
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Description Section */}
                   {profileData.description && (
                     <div className="mt-6 pt-6 border-t border-gray-100">
                       <h4 className="font-medium text-gray-700 mb-2">Description</h4>
-                      <p className="text-gray-600">{profileData.description}</p>
+                      <div className="text-gray-600" dangerouslySetInnerHTML={{ __html: profileData.description }} />
                     </div>
                   )}
                 </>
@@ -548,8 +672,17 @@ const UserProfile = () => {
           {/* Trainer Information Section */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">Your Trainer</h2>
-              <p className="text-gray-500 mb-6">Current assigned trainer</p>
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-1">My Trainer</h2>
+                  <p className="text-gray-500">Current assigned trainer</p>
+                </div>
+                <Link to="/mytrainer">
+                  <button className="px-4 py-2 bg-[#CE0000] hover:bg-[#b00000] text-white rounded-md text-sm font-medium transition-colors">
+                    My Recent Trainers
+                  </button>
+                </Link>
+              </div>
 
               {loading ? (
                 <LoadingSpinner />
@@ -674,7 +807,7 @@ const UserProfile = () => {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-gray-600 mb-4">You don't have any trainers assigned yet.</p>
-                  <Link to="/trainers">
+                  <Link to="/trainerExplore">
                     <button className="px-4 py-2 bg-[#CE0000] hover:bg-[#b00000] text-white rounded-md text-sm font-medium transition-colors">
                       Find a Trainer
                     </button>
@@ -717,16 +850,21 @@ const UserProfile = () => {
                   {selectedPrograms.map((item) => (
                     <div key={item._id} className="bg-gray-50 rounded-lg overflow-hidden border">
                       <div className="flex flex-col md:flex-row">
-                      <div className="md:w-1/3">
-  <img
-    src={item.exercise.cardPhoto ? `http://localhost:3000/${item.exercise.cardPhoto}` : "/placeholder.svg"}
-    alt={item.exercise.exerciseGoal}
-    className="w-full h-48 md:h-full object-cover"
-    onError={(e) => {
-      e.target.src = "https://images.unsplash.com/photo-1574680096145-d05b474e2155?q=80&w=2069&auto=format&fit=crop"
-    }}
-  />
-</div>
+                        <div className="md:w-1/3">
+                          <img
+                            src={
+                              item.exercise.cardPhoto
+                                ? `http://localhost:3000/${item.exercise.cardPhoto}`
+                                : "/placeholder.svg"
+                            }
+                            alt={item.exercise.exerciseGoal}
+                            className="w-full h-48 md:h-full object-cover"
+                            onError={(e) => {
+                              e.target.src =
+                                "https://images.unsplash.com/photo-1574680096145-d05b474e2155?q=80&w=2069&auto=format&fit=crop"
+                            }}
+                          />
+                        </div>
                         <div className="p-5 md:w-2/3">
                           <div className="flex justify-between items-start">
                             <h4 className="text-lg font-bold text-gray-900 mb-2">{item.exercise.exerciseGoal}</h4>
@@ -816,8 +954,6 @@ const UserProfile = () => {
                 </Link>
               </div>
             )}
-
-            
           </div>
         </div>
 

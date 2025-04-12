@@ -588,7 +588,7 @@ const TrainerBooking = () => {
                   {selectedBooking?.status === "ongoing" && (
                     <div className="mt-6">
                       <button
-                        onClick={() => window.open(`/video-call/${selectedBooking._id}`, "_blank")}
+                        onClick={() => window.open('/chat')}
                         className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg flex items-center justify-center transition-colors duration-200 shadow-md"
                       >
                         <PlayCircle className="w-5 h-5 mr-2" />

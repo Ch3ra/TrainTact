@@ -12,6 +12,7 @@ const {
   getBookingById,
   getAllBookings,
   getBookingProgress,
+  cleanupCompletedSessions,
 } = require("../controller/availabilityController/availabilityController")
 const router = express.Router()
 
@@ -46,6 +47,9 @@ router.get("/booking-progress", getBookingProgress)
 router.get("/client/trainers/:id", getClientTrainers)
 
 router.get("/trainer/clients/:id", getTrainerClients)
+
+// Add cleanup route
+router.post("/cleanup-completed", cleanupCompletedSessions);
 
 module.exports = router
 

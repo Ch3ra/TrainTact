@@ -527,3 +527,60 @@ exports.updatePaymentStatus = async (req, res) => {
   }
 }
 
+// NEW: Process direct payment
+exports.processDirectPayment = async (req, res) => {
+  try {
+    const { bookingId } = req.params
+    const { amount, notes = "Direct payment from client portal" } = req.body
+
+    if (!bookingId) {
+      return res.status(400).json({ message: "Booking ID is required" })
+    }
+
+    // Get the current booking
+    const currentBooking = await WorkoutSchedule.findOne({ bookingNumber: bookingId })
+
+    if (!currentBooking) {
+      return res.status(404).json({ message: "Booking not found" })
+    }
+
+    // Use the provided amount or the booking's existing amount
+    const paymentAmount = amount || currentBooking.amount
+
+    if (!paymentAmount) {
+      return res.status(400).json({ message: "Payment amount is required" })
+    }
+
+    // Generate a transaction ID
+    const transactionId = `DIR-${Date.now()}-${Math.floor(Math.random() * 10000)}`
+
+    // Update the payment status to paid
+    const updatedBooking = await WorkoutSchedule.findOneAndUpdate(
+      { bookingNumber: bookingId },
+      {
+        paymentStatus: "paid",
+        isClientVerified: true,
+        // Set the amount field
+        amount: paymentAmount,
+        // Store transaction details
+        $set: {
+          "paymentDetails.transactionId": transactionId,
+          "paymentDetails.paidAt": new Date(),
+          "paymentDetails.method": "Direct Payment",
+          "paymentDetails.amount": paymentAmount,
+          "paymentDetails.notes": notes,
+        },
+      },
+      { new: true },
+    )
+
+    res.json({
+      success: true,
+      message: "Payment processed successfully",
+      booking: updatedBooking,
+    })
+  } catch (error) {
+    console.error("Error processing direct payment:", error)
+    res.status(500).json({ message: "Failed to process payment", error: error.message })
+  }
+}

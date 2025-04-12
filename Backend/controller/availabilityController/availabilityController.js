@@ -3,6 +3,7 @@ const Conversation = require("../../model/conversationModel")
 const User = require("../../model/userModel")
 const cron = require("node-cron")
 const notificationController = require("../notification/NotificationController")
+const chatController = require("../chatController/chatController")
 
 const updateWorkoutStatuses = async () => {
   const now = new Date()
@@ -18,7 +19,15 @@ const updateWorkoutStatuses = async () => {
       { $set: { status: "ongoing" } },
     )
 
-    // Update 'ongoing' to 'completed' when end date has passed
+    // Find ongoing workouts that should be completed
+    const ongoingWorkouts = await WorkoutSchedule.find({
+      status: "ongoing",
+      endDate: { $lte: now },
+    });
+
+    console.log(`Found ${ongoingWorkouts.length} workouts to mark as completed`);
+
+    // Update status to completed
     const ongoingResult = await WorkoutSchedule.updateMany(
       {
         status: "ongoing",
@@ -26,6 +35,13 @@ const updateWorkoutStatuses = async () => {
       },
       { $set: { status: "completed" } },
     )
+
+    // Handle conversation cleanup for completed workouts
+    for (const workout of ongoingWorkouts) {
+      console.log(`Processing completed workout: ${workout._id}`);
+      console.log(`Client: ${workout.clientId}, Trainer: ${workout.trainerId}`);
+      await chatController.handleWorkoutCompletion(workout._id);
+    }
 
     console.log("Workout statuses updated successfully")
     console.log(`Updated ${upcomingResult.modifiedCount} upcoming schedules to ongoing`)
@@ -771,6 +787,11 @@ exports.updateBookingStatus = async (req, res) => {
     
     await booking.save();
     
+    // Handle conversation cleanup if status is changed to completed
+    if (oldStatus !== 'completed' && status === 'completed') {
+      await chatController.handleWorkoutCompletion(booking._id);
+    }
+    
     // Send notifications based on status change
     if (oldStatus !== status) {
       try {
@@ -816,13 +837,13 @@ exports.updateBookingStatus = async (req, res) => {
       }
     }
     
-    res.status(200).json({ 
-      message: "Booking status updated successfully",
-      booking: booking
+    res.status(200).json({
+      message: `Booking status updated to ${status}`,
+      booking
     });
   } catch (error) {
     console.error("Error updating booking status:", error);
-    res.status(500).send("Server error: " + error.message);
+    res.status(500).json({ message: "Server error: " + error.message });
   }
 };
 
@@ -987,8 +1008,6 @@ exports.getTrainerClients = async (req, res) => {
   }
 };
 
-
-
 exports.getBookingProgress = async (req, res) => {
   try {
     // Get the last 12 months for our data range
@@ -1084,3 +1103,55 @@ exports.getBookingProgress = async (req, res) => {
     })
   }
 }
+
+// Add this new function to clean up conversations for completed sessions
+exports.cleanupCompletedSessions = async (req, res) => {
+  try {
+    console.log("Starting manual cleanup of completed sessions");
+    
+    // Find all completed sessions
+    const completedSessions = await WorkoutSchedule.find({
+      status: "completed"
+    });
+
+    console.log(`Found ${completedSessions.length} completed sessions`);
+
+    let cleanedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    for (const session of completedSessions) {
+      try {
+        console.log(`Processing session ${session._id} for client ${session.clientId} and trainer ${session.trainerId}`);
+        const result = await chatController.cleanupConversation(session.clientId, session.trainerId);
+        
+        if (result) {
+          console.log(`Successfully cleaned up conversation for session ${session._id}`);
+          cleanedCount++;
+        } else {
+          console.log(`No cleanup needed for session ${session._id} (likely has active sessions)`);
+          skippedCount++;
+        }
+      } catch (error) {
+        console.error(`Error processing session ${session._id}:`, error);
+        errorCount++;
+      }
+    }
+
+    res.status(200).json({
+      message: "Cleanup process completed",
+      summary: {
+        totalSessions: completedSessions.length,
+        cleaned: cleanedCount,
+        skipped: skippedCount,
+        errors: errorCount
+      }
+    });
+  } catch (error) {
+    console.error("Error in cleanup process:", error);
+    res.status(500).json({ 
+      message: "Error during cleanup process",
+      error: error.message 
+    });
+  }
+};

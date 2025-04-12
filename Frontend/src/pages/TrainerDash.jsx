@@ -850,10 +850,10 @@ const TrainerDashboard = () => {
                             {formatDate(session.startDate)} • {session.startTime} • {session.duration} min
                           </div>
                         </div>
-
+<Link to='/chat'>
                         <button className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
                           Join
-                        </button>
+                        </button></Link>
                       </div>
                     ))}
 

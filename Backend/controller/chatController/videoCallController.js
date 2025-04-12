@@ -53,8 +53,8 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
       console.log(`Relaying offer from ${from || socket.id} to call room ${callId}`, {
         offerSDP: sdp.type,
         toRoom: callId,
-        participants: activeVideoCalls.get(callId)?.size || 0
-      });
+        participants: activeVideoCalls.get(callId)?.size || 0,
+      })
       socket.to(callId).emit("offer", {
         from: from || socket.id,
         sdp,
@@ -65,8 +65,8 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
       console.log(`Relaying answer from ${from || socket.id} to call room ${callId}`, {
         answerSDP: sdp.type,
         toRoom: callId,
-        participants: activeVideoCalls.get(callId)?.size || 0
-      });
+        participants: activeVideoCalls.get(callId)?.size || 0,
+      })
       socket.to(callId).emit("answer", {
         from: from || socket.id,
         sdp,
@@ -116,7 +116,121 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
       })
     })
 
-    // Handle call ending
+    // Improve the declineCall handler to ensure proper cleanup on both sides
+    socket.on("declineCall", async ({ callId, userId }) => {
+      try {
+        console.log(`User ${userId} declined call ${callId}`)
+
+        const call = await VideoCall.findOne({ callId })
+        if (call) {
+          call.status = "rejected"
+          call.endTime = Date.now()
+          const durationMs = call.endTime - call.startTime
+          call.duration = Math.floor(durationMs / 1000)
+          await call.save()
+
+          // IMPORTANT: Broadcast to ALL clients, including the sender
+          io.emit("callDeclined", {
+            callId,
+            declinedBy: userId,
+          })
+
+          // Also send to the specific call room
+          io.to(callId).emit("callDeclined", {
+            callId,
+            declinedBy: userId,
+          })
+
+          // Also send releaseMediaResources command
+          io.emit("releaseMediaResources", {
+            callId,
+          })
+
+          // Find and notify the initiator directly
+          const initiatorId = call.initiator.toString()
+          const initiatorSocket = users.find((u) => u.userId === initiatorId)?.socketId
+
+          if (initiatorSocket) {
+            console.log(`Sending direct callDeclined event to initiator socket: ${initiatorSocket}`)
+            io.to(initiatorSocket).emit("callDeclined", {
+              callId,
+              declinedBy: userId,
+            })
+
+            // Also send a direct releaseMediaResources command to the initiator
+            io.to(initiatorSocket).emit("releaseMediaResources", {
+              callId,
+            })
+
+            // Send broadcast event to ensure initiator receives it
+            io.to(initiatorSocket).emit("broadcastCallDeclined", {
+              callId,
+              declinedBy: userId,
+            })
+
+            // Force the initiator to leave the call room
+            io.to(initiatorSocket).emit("forceLeaveCall", {
+              callId,
+            })
+          }
+
+          // Find and notify the receiver directly
+          const receiverId = call.receiver.toString()
+          const receiverSocket = users.find((u) => u.userId === receiverId)?.socketId
+
+          if (receiverSocket) {
+            console.log(`Sending direct callDeclined event to receiver socket: ${receiverSocket}`)
+            io.to(receiverSocket).emit("callDeclined", {
+              callId,
+              declinedBy: userId,
+            })
+
+            // Also send a direct releaseMediaResources command to the receiver
+            io.to(receiverSocket).emit("releaseMediaResources", {
+              callId,
+            })
+
+            // Send broadcast event to ensure receiver receives it
+            io.to(receiverSocket).emit("broadcastCallDeclined", {
+              callId,
+              declinedBy: userId,
+            })
+
+            // Force the receiver to leave the call room
+            io.to(receiverSocket).emit("forceLeaveCall", {
+              callId,
+            })
+          }
+
+          // Block any new incoming calls with the same ID
+          activeVideoCalls.delete(callId)
+
+          // Broadcast to all connected clients to ensure everyone gets notified
+          io.emit("broadcastCallDeclined", {
+            callId,
+            declinedBy: userId,
+          })
+
+          // Remove all sockets from the call room
+          const room = io.sockets.adapter.rooms.get(callId)
+          if (room) {
+            for (const socketId of room) {
+              io.sockets.sockets.get(socketId)?.leave(callId)
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error handling call decline:", err)
+      }
+    })
+
+    // Add handler for explicit call room leave
+    socket.on("leaveCall", ({ callId, userId }) => {
+      console.log(`User ${userId} leaving call room: ${callId}`)
+      socket.leave(callId)
+    })
+
+    // Improve the endCall handler to ensure proper cleanup
     socket.on("endCall", async ({ callId, userId }) => {
       try {
         const call = await VideoCall.findOne({ callId })
@@ -129,7 +243,9 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
             io.to(callId).emit("screenShareStopped", { callId })
           }
 
-          call.status = "completed"
+          // Update call status - check if it's a decline or normal end
+          const isDeclined = call.status === "ringing"
+          call.status = isDeclined ? "rejected" : "completed"
           call.endTime = Date.now()
 
           // Calculate duration in seconds
@@ -137,12 +253,69 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
           call.duration = Math.floor(durationMs / 1000)
 
           await call.save()
+
+          // If call was declined, send specific event to EVERYONE, not just the room
+          if (isDeclined) {
+            // Broadcast to all connected clients to ensure initiator gets it
+            io.emit("callDeclined", {
+              callId,
+              declinedBy: userId,
+            })
+
+            // Find the initiator's socket to send a direct message
+            const initiatorId = call.initiator.toString()
+            const initiatorSocket = users.find((u) => u.userId === initiatorId)?.socketId
+
+            if (initiatorSocket) {
+              console.log(`Sending direct callDeclined event to initiator socket: ${initiatorSocket}`)
+              io.to(initiatorSocket).emit("callDeclined", {
+                callId,
+                declinedBy: userId,
+              })
+
+              // Also send a direct releaseMediaResources command
+              io.to(initiatorSocket).emit("releaseMediaResources", {
+                callId,
+              })
+            }
+
+            // Find the receiver's socket to send a direct message
+            const receiverId = call.receiver.toString()
+            const receiverSocket = users.find((u) => u.userId === receiverId)?.socketId
+
+            if (receiverSocket) {
+              console.log(`Sending direct callDeclined event to receiver socket: ${receiverSocket}`)
+              io.to(receiverSocket).emit("callDeclined", {
+                callId,
+                declinedBy: userId,
+              })
+
+              // Also send a direct releaseMediaResources command to the receiver
+              io.to(receiverSocket).emit("releaseMediaResources", {
+                callId,
+              })
+            }
+          } else {
+            // Regular call end - broadcast to everyone
+            io.emit("callEnded", {
+              callId,
+              endedBy: userId,
+            })
+
+            // Also send to the specific room
+            io.to(callId).emit("callEnded", {
+              callId,
+              endedBy: userId,
+            })
+          }
+
+          // Block any new incoming calls with the same ID by removing it from active calls
+          activeVideoCalls.delete(callId)
         }
 
-        // Notify others in the room
-        socket.to(callId).emit("callEnded", {
+        // Send an explicit command to all clients to release media resources
+        io.emit("releaseMediaResources", {
           callId,
-          endedBy: userId,
         })
 
         // Remove from active calls
@@ -161,26 +334,7 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
       }
     })
 
-    // Handle declined call
-    socket.on("declineCall", async ({ callId, userId }) => {
-      try {
-        const call = await VideoCall.findOne({ callId })
-        if (call) {
-          call.status = "rejected"
-          await call.save()
-        }
-
-        // Notify the initiator
-        socket.to(callId).emit("callDeclined", {
-          callId,
-          declinedBy: userId,
-        })
-      } catch (err) {
-        console.error("Error declining call:", err)
-      }
-    })
-
-    // Handle disconnection
+    // Add a new handler for the disconnect event to ensure cleanup
     socket.on("disconnect", async () => {
       console.log("User disconnected from video service:", socket.id)
 
@@ -191,6 +345,12 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
           socket.to(callId).emit("peerDisconnected", {
             userId: socket.userId,
             socketId: socket.id,
+          })
+
+          // Send an explicit command to release media resources
+          socket.to(callId).emit("releaseMediaResources", {
+            callId,
+            userId: socket.userId,
           })
 
           // Don't remove from participants yet to allow for reconnection
@@ -229,6 +389,7 @@ const initializeVideoSocket = (socketIo, sharedUsers) => {
   })
 }
 
+// Add a function to check if a call is active before allowing a new one
 const initiateVideoCall = async (req, res) => {
   try {
     const { initiatorId, receiverId, conversationId } = req.body
@@ -243,6 +404,27 @@ const initiateVideoCall = async (req, res) => {
     if (initiatorId === receiverId) {
       return res.status(400).json({
         message: "Cannot start call with yourself",
+      })
+    }
+
+    // Check if either user is already in an active call
+    const initiatorInCall = Array.from(activeVideoCalls.values()).some((participants) =>
+      participants.has(initiatorId.toString()),
+    )
+
+    const receiverInCall = Array.from(activeVideoCalls.values()).some((participants) =>
+      participants.has(receiverId.toString()),
+    )
+
+    if (initiatorInCall) {
+      return res.status(400).json({
+        message: "You are already in an active call",
+      })
+    }
+
+    if (receiverInCall) {
+      return res.status(400).json({
+        message: "Receiver is already in an active call",
       })
     }
 

@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import styles from "./VideoCall.module.css"
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MonitorSmartphone, StopCircle, Loader2 } from "lucide-react"
 import socketService from "../../../socketService"
 
 const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
@@ -307,10 +309,10 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
           console.log("New ICE Candidate:", event.candidate.type || "unknown type")
           setIceCandidates((prev) => [...prev, event.candidate])
 
-          // Send each ICE candidate as it's generated
+          // Send each ICE candidate as it's generated with correct receiver ID
           socketService.sendSignal("iceCandidate", {
             callId,
-            to: otherUser.id,
+            to: otherUser._id,
             candidate: event.candidate.toJSON(),
             from: userId,
           })
@@ -878,7 +880,7 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
     }
   }
 
-  // NEW: Improved offer/answer exchange with perfect negotiation pattern
+  // Create initial offer with correct receiver ID
   const createInitialOffer = async () => {
     try {
       if (!peerConnection.current) {
@@ -886,7 +888,7 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
         return
       }
 
-      console.log("Creating initial offer...")
+      console.log("Creating initial offer for receiver:", otherUser._id)
 
       // Queue this operation to prevent race conditions
       await queueSignalingOperation(async () => {
@@ -900,14 +902,14 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
         // Add a small delay before sending the offer to ensure everything is ready
         await new Promise((resolve) => setTimeout(resolve, 500))
 
-        // Send the offer
+        // Send the offer with correct receiver ID
         socketService.sendSignal("offer", {
           callId,
-          to: otherUser.id,
+          to: otherUser._id,
           sdp: offer,
           from: userId,
         })
-        console.log("Initial offer sent to:", otherUser.id)
+        console.log("Initial offer sent to:", otherUser._id)
       })
     } catch (error) {
       console.error("Error creating offer:", error)
@@ -920,12 +922,35 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
     console.log("Cleaning up call resources...")
 
     if (peerConnection.current) {
+      // Close all senders and receivers first
+      const senders = peerConnection.current.getSenders()
+      senders.forEach((sender) => {
+        if (sender.track) {
+          sender.track.stop()
+          console.log(`Stopped sender track: ${sender.track.kind}`)
+        }
+      })
+
       peerConnection.current.close()
       peerConnection.current = null
     }
 
+    // Ensure all local stream tracks are stopped
     if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop())
+      localStream.getTracks().forEach((track) => {
+        track.stop()
+        console.log(`Stopped local track: ${track.kind} - ${track.label}`)
+      })
+      setLocalStream(null)
+    }
+
+    // Ensure remote stream tracks are stopped too
+    if (remoteStream) {
+      remoteStream.getTracks().forEach((track) => {
+        track.stop()
+        console.log(`Stopped remote track: ${track.kind} - ${track.label}`)
+      })
+      setRemoteStream(null)
     }
 
     if (screenTrack.current) {
@@ -965,6 +990,52 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
     answerProcessed.current = false
     lastProcessedAnswerId.current = null
   }
+
+  // Add call decline handler
+  useEffect(() => {
+    const handleCallDeclinedOriginal = (data) => {
+      console.log("Call declined event received", data)
+
+      // Use the comprehensive cleanup function
+      cleanupCall()
+
+      // Additional UI state resets
+      setConnectionStatus("disconnected")
+      setError(null)
+      setIceGatheringState("new")
+      setIceCandidates([])
+      setIceErrors([])
+
+      // Notify parent component to close the call UI
+      onEndCall()
+    }
+
+    // Handle both direct decline and broadcast events
+    socketService.getSocket()?.on("callDeclined", handleCallDeclinedOriginal)
+    socketService.getSocket()?.on("broadcastCallDeclined", handleCallDeclinedOriginal)
+    socketService.getSocket()?.on("releaseMediaResources", (data) => {
+      console.log("Release media resources event received", data)
+      if (data.callId === callId) {
+        handleCallDeclinedOriginal(data)
+      }
+    })
+
+    // Set up broadcast handler
+    socketService.handleCallDeclineBroadcast((data) => {
+      if (data.callId === callId) {
+        console.log("Call decline broadcast received, cleaning up...")
+        handleCallDeclinedOriginal(data)
+      }
+    })
+
+    return () => {
+      socketService.getSocket()?.off("callDeclined", handleCallDeclinedOriginal)
+      socketService.getSocket()?.off("broadcastCallDeclined", handleCallDeclinedOriginal)
+      socketService.getSocket()?.off("releaseMediaResources")
+      // Remove broadcast handler
+      socketService.removeVideoListener("broadcastCallDeclined")
+    }
+  }, [callId, onEndCall])
 
   // IMPROVED: Better setup call function with more reliable camera access
   useEffect(() => {
@@ -1153,6 +1224,33 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
 
     // Cleanup when component unmounts
     return () => {
+      console.log("Component unmounting - releasing all media resources")
+
+      // Stop all tracks from local stream
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          track.stop()
+          console.log(`Unmount: Stopped local ${track.kind} track: ${track.label}`)
+        })
+      }
+
+      // Stop all tracks from remote stream
+      if (remoteStream) {
+        remoteStream.getTracks().forEach((track) => {
+          track.stop()
+          console.log(`Unmount: Stopped remote ${track.kind} track: ${track.label}`)
+        })
+      }
+
+      // Clear video elements
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null
+      }
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null
+      }
+
       cleanupCall()
     }
   }, [callId, otherUser?.id, isInitiator])
@@ -1414,16 +1512,25 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
       }
     }
 
-    // Set up event listeners
+    socketService.handleCallRejected = function (callback) {
+      this._addVideoListener("callDeclined", callback)
+    }
+
     socketService.handleVideoOffer(handleVideoOffer)
     socketService.handleVideoAnswer(handleVideoAnswer)
     socketService.handleIceCandidate(handleIceCandidate)
+
+    socketService.handleCallRejected(() => {
+      console.log("Call was declined by the other user")
+      handleCallDeclined()
+    })
 
     // Clean up event listeners when component unmounts
     return () => {
       socketService.removeVideoListener("offer")
       socketService.removeVideoListener("answer")
       socketService.removeVideoListener("iceCandidate")
+      socketService.removeVideoListener("callDeclined")
     }
   }, [callId, userId])
 
@@ -1613,7 +1720,7 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
   const handleScreenShare = async () => {
     // Don't allow if another media operation is in progress
     if (mediaOperationInProgress.current) {
-      console.log("Media operation in progress, cannot start screen sharing")
+      console.log("Media operation in progress, cannot reconnect")
       return
     }
 
@@ -1878,129 +1985,146 @@ const VideoCall = ({ callId, otherUser, onEndCall, isInitiator }) => {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="relative flex-1 flex items-center justify-center">
-        {/* Remote video (large) */}
-        <div className="w-full h-full relative">
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className={`w-full h-full object-cover ${connectionStatus !== "connected" ? "opacity-0" : "opacity-100"}`}
-          />
+  const handleEndCall = () => {
+    console.log("Ending call...")
 
-          {/* Local video (small overlay) */}
-          <div className="absolute bottom-4 right-4 w-1/4 max-w-[200px] aspect-video rounded-lg overflow-hidden border-2 border-white shadow-lg">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            {!isVideoOn && (
-              <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                <span className="text-white text-sm">Camera Off</span>
+    // Explicitly stop all tracks from local stream before cleaning up
+    if (localStream) {
+      localStream.getTracks().forEach((track) => {
+        track.stop()
+        console.log(`Stopped local ${track.kind} track: ${track.label}`)
+      })
+      setLocalStream(null)
+    }
+
+    // Clear video elements to release references
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+    }
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+    }
+
+    // Then proceed with the rest of the cleanup
+    cleanupCall()
+    onEndCall()
+  }
+
+  // Add a handler for the new releaseMediaResources event
+  useEffect(() => {
+    const handleReleaseMediaResources = ({ callId }) => {
+      console.log("Received explicit command to release media resources")
+
+      // Stop all media tracks
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          track.stop()
+          console.log(`Stopped local ${track.kind} track: ${track.label}`)
+        })
+        setLocalStream(null)
+      }
+
+      // Clear video elements
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null
+      }
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null
+      }
+    }
+
+    socketService.getSocket()?.on("releaseMediaResources", handleReleaseMediaResources)
+
+    return () => {
+      socketService.getSocket()?.off("releaseMediaResources", handleReleaseMediaResources)
+    }
+  }, [localStream])
+
+  return (
+    <div className={styles.videoCallContainer}>
+      <div className={styles.videoGrid}>
+        {/* Remote video */}
+        <div className={`${styles.videoWrapper} ${styles.remoteVideo}`}>
+          <video ref={remoteVideoRef} autoPlay playsInline className={styles.videoElement} />
+          {!remoteStream && (
+            <div className="absolute inset-0 flex items-center justify-center text-white">
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                <p>Waiting for {otherUser.name} to join...</p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Connection status overlays */}
-        {connectionStatus === "connecting" && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white">
-            <div className="w-16 h-16 border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-xl font-medium mb-2">Connecting... ({iceGatheringState})</p>
-            <p className="text-sm mb-4">Generated {iceCandidates.length} ICE candidates</p>
-            {error && <p className="text-red-400 max-w-md text-center px-4 py-2 bg-red-900/30 rounded-lg">{error}</p>}
-          </div>
-        )}
-
-        {connectionStatus === "failed" && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white">
-            <div className="bg-red-900/50 p-6 rounded-xl max-w-md">
-              <h3 className="text-xl font-bold mb-4 text-center">Connection Failed</h3>
-              <p className="mb-2">ICE Candidates: {iceCandidates.length}</p>
-              <p className="mb-4">Errors: {iceErrors.length}</p>
-              {error && <p className="text-red-300 mb-6 p-3 bg-red-950/50 rounded">{error}</p>}
-              <div className="flex justify-center gap-4">
-                <button
-                  onClick={handleReconnect}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition"
-                >
-                  Retry Connection
-                </button>
-                <button onClick={onEndCall} className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition">
-                  End Call
-                </button>
-              </div>
+        {/* Local video */}
+        <div className={`${styles.videoWrapper} ${styles.localVideo}`}>
+          <video ref={localVideoRef} autoPlay playsInline muted className={styles.videoElement} />
+          {!isVideoOn && (
+            <div className="absolute inset-0 bg-gray-800 flex items-center justify-center text-white">
+              <span>Camera Off</span>
             </div>
+          )}
+          <div className={styles.controlsBar}>
+            <button
+              onClick={() => toggleMedia("audio")}
+              className={`${styles.controlButton} ${isMuted ? styles.danger : ""}`}
+            >
+              {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={() => toggleMedia("video")}
+              className={`${styles.controlButton} ${!isVideoOn ? styles.danger : ""}`}
+            >
+              {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={handleScreenShare}
+              className={`${styles.controlButton} ${isScreenSharing ? styles.danger : ""}`}
+            >
+              {isScreenSharing ? <StopCircle className="w-5 h-5" /> : <MonitorSmartphone className="w-5 h-5" />}
+            </button>
+            <button onClick={handleEndCall} className={`${styles.controlButton} ${styles.danger}`}>
+              <PhoneOff className="w-5 h-5" />
+            </button>
           </div>
-        )}
-
-        {connectionStatus === "disconnected" && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white">
-            <div className="bg-yellow-900/50 p-6 rounded-xl max-w-md">
-              <h3 className="text-xl font-bold mb-4 text-center">Connection Lost</h3>
-              <p className="mb-4">Attempting to reconnect automatically...</p>
-              {error && <p className="text-yellow-300 mb-6 p-3 bg-yellow-950/50 rounded">{error}</p>}
-              <div className="flex justify-center">
-                <button
-                  onClick={handleReconnect}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition"
-                >
-                  Retry Manually
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
-      {/* Media controls */}
-      <div className="bg-gray-900 p-4 flex items-center justify-center space-x-4">
-        <button
-          onClick={() => toggleMedia("audio")}
-          className={`p-3 rounded-full ${isMuted ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"} transition`}
-        >
-          {isMuted ? "🔇 Unmute" : "🎤 Mute"}
-        </button>
-        {isVideoOn ? (
-          <button
-            onClick={() => toggleMedia("video")}
-            className="p-3 rounded-full bg-gray-700 hover:bg-gray-600 transition"
-          >
-            📷 Stop Video
-          </button>
-        ) : (
-          <button onClick={startVideo} className="p-3 rounded-full bg-red-600 hover:bg-red-700 transition">
-            📹 Start Video
-          </button>
-        )}
-        <button
-          onClick={handleScreenShare}
-          className={`p-3 rounded-full ${isScreenSharing ? "bg-green-600" : "bg-gray-700 hover:bg-gray-600"} transition`}
-        >
-          {isScreenSharing ? "🖥 Stop Share" : "🖥 Share Screen"}
-        </button>
-        <button className="p-3 rounded-full bg-red-600 hover:bg-red-700 transition" onClick={onEndCall}>
-          🚫 End Call
-        </button>
-      </div>
+      {/* Connection status overlays */}
+      {connectionStatus === "connecting" && (
+        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white">
+          <div className="w-16 h-16 border-4 border-[#CE0000] border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-xl font-medium mb-2">Connecting...</p>
+          {error && <p className="text-red-400 max-w-md text-center px-4 py-2 bg-red-900/30 rounded-lg">{error}</p>}
+        </div>
+      )}
 
-      {/* Debug panel - can be hidden in production */}
-      <div className="bg-gray-900 border-t border-gray-800 p-2 text-xs text-gray-400">
-        <div className="flex flex-wrap gap-4">
-          <div>
-            <strong>Status:</strong> {connectionStatus}
+      {connectionStatus === "failed" && (
+        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white">
+          <div className="bg-white/10 p-6 rounded-xl max-w-md backdrop-blur-sm">
+            <h3 className="text-xl font-bold mb-4 text-center">Connection Failed</h3>
+            {error && <p className="text-red-300 mb-6 p-3 bg-red-950/50 rounded">{error}</p>}
+            <div className="flex justify-center gap-4">
+              <button onClick={handleReconnect} className={styles.acceptButton}>
+                Retry Connection
+              </button>
+              <button onClick={onEndCall} className={styles.declineButton}>
+                End Call
+              </button>
+            </div>
           </div>
-          <div>
-            <strong>ICE Gathering:</strong> {iceGatheringState}
-          </div>
-          <div>
-            <strong>Signaling:</strong> {peerConnection.current?.signalingState || "N/A"}
-          </div>
-          <div>
-            <strong>ICE Candidates:</strong> {iceCandidates.length}
-          </div>
-          <div>
-            <strong>Errors:</strong> {iceErrors.length}
-          </div>
+        </div>
+      )}
+
+      {/* Debug info - hidden in production */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/50 p-2 text-xs text-gray-400 backdrop-blur-sm">
+        <div className="flex flex-wrap gap-4 justify-center">
+          <div>Status: {connectionStatus}</div>
+          <div>ICE: {iceGatheringState}</div>
+          <div>Candidates: {iceCandidates.length}</div>
+          <div>Errors: {iceErrors.length}</div>
         </div>
       </div>
     </div>

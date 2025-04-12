@@ -92,8 +92,16 @@ class SocketService {
     })
   }
 
+  // Improve the handleCallRejected method to ensure proper cleanup
   handleCallRejected(callback) {
-    this._addVideoListener("callDeclined", callback)
+    this._addVideoListener("callDeclined", (data) => {
+      console.log("Call declined event received:", data)
+      // Ensure we release media resources
+      if (this.socket) {
+        this.socket.emit("releaseMediaResources", { callId: data.callId || this.activeCallId })
+      }
+      callback(data)
+    })
   }
 
   handleCallEnded(callback) {
@@ -138,6 +146,54 @@ class SocketService {
     console.log(`Ending call: ${callId}`)
     this.socket.emit("endCall", { callId, userId: this.userId })
     this.activeCallId = null
+  }
+
+  // Add a method to explicitly handle call rejection
+  declineCall(callId, userId) {
+    if (!this.socket) return
+    console.log(`Declining call: ${callId}`)
+
+    // First, emit the declineCall event
+    this.socket.emit("declineCall", { callId, userId: userId || this.userId })
+
+    // Then explicitly emit callDeclined event locally to ensure immediate UI update
+    if (this.socket._callbacks && this.socket._callbacks["$callDeclined"]) {
+      console.log("Triggering local callDeclined event for immediate UI update")
+      this.socket._callbacks["$callDeclined"][0]({ callId, declinedBy: userId || this.userId })
+    }
+
+    // Also emit endCall to ensure proper cleanup
+    this.socket.emit("endCall", { callId, userId: userId || this.userId })
+
+    // Clear active call ID
+    this.activeCallId = null
+
+    // Emit releaseMediaResources to ensure all media resources are released
+    this.socket.emit("releaseMediaResources", { callId })
+  }
+
+  // Add a method to directly handle incoming call UI
+  handleIncomingCallUI(callData, acceptCallback, declineCallback) {
+    return {
+      accept: () => {
+        if (acceptCallback) acceptCallback(callData)
+      },
+      decline: () => {
+        // Immediately trigger local UI update
+        if (this.socket._callbacks && this.socket._callbacks["$callDeclined"]) {
+          console.log("Triggering immediate local callDeclined event")
+          this.socket._callbacks["$callDeclined"][0]({
+            callId: callData.callId,
+            declinedBy: this.userId,
+          })
+        }
+
+        // Then send the decline event to server
+        this.declineCall(callData.callId, this.userId)
+
+        if (declineCallback) declineCallback(callData)
+      },
+    }
   }
 
   // ==================== Connection Management ====================
