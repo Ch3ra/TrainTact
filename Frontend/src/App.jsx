@@ -61,25 +61,22 @@ import ClientProfile from "./UserPage/ClientProfile"
 import TrainerDescription from "./UserPage/TrainerDescription"
 import ExerciseDetail from "./UserPage/ExerciseDetails"
 
-
-
 function App() {
   return (
     <>
       <BrowserRouter>
         <NotificationProvider>
           <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/card" element={<Card />} />
-          <Route path="/trainerExplore" element={<TrainerExplore />} /> 
-          <Route path="/exercise" element={<ExerciseSection />} />
-          <Route path="/AboutUs" element={<AboutUs />} />
-          <Route path="/emailInput" element={<EmailInput />} />
-          <Route path="/enterNewPassword" element={<ResetPassword />} />
-          <Route path="/exercise/:id" element={<ExerciseDescription />} />
-          <Route path="/ratingfeedback" element={<RatingFeedback />} />
-          <Route path="/chat" element={<Chat />} />
-
+            <Route path="/" element={<Landing />} />
+            <Route path="/card" element={<Card />} />
+            <Route path="/trainerExplore" element={<TrainerExplore />} /> 
+            <Route path="/exercise" element={<ExerciseSection />} />
+            <Route path="/AboutUs" element={<AboutUs />} />
+            <Route path="/emailInput" element={<EmailInput />} />
+            <Route path="/enterNewPassword" element={<ResetPassword />} />
+            <Route path="/exercise/:id" element={<ExerciseDescription />} />
+            <Route path="/ratingfeedback" element={<RatingFeedback />} />
+            <Route path="/chat" element={<Chat />} />
 
             {/* auth Paths */}
             <Route path="/registerTrainer" element={<TrainerRegister />} />
@@ -100,11 +97,8 @@ function App() {
             <Route path="/editTrainerProfile" element={<TrainerProfileEdit />} />
             <Route path="/clientRequest" element={<ClientRequest />} />
             <Route path="/clientDescription/:id" element={<ClientDescription />} />
-
             <Route path="/paymentTransaction" element={<PaymentTransaction />} />
             <Route path="/trainerBooking" element={<TrainerBooking />} />
-            
-          
 
             {/* client Pannel Paths */}
             <Route path="/clientDash" element={<ClientDash />} />
@@ -124,12 +118,8 @@ function App() {
             <Route path="/clientProfile" element={<ClientProfile/>} />
             <Route path="/trainerDescription" element={<TrainerDescription/>} />
             <Route path="/exercises/:id" element={<ExerciseDetail/>} />
-            
 
-
-
-
-          {/* Admin Pannel Paths */}
+            {/* Admin Pannel Paths */}
             <Route path="/admin" element={<DashboardPage />} />
             <Route path="/alltrainer" element={<TrainersPage />} />
             <Route path="/request" element={<TrainerRequestsPage />} />
@@ -140,10 +130,8 @@ function App() {
             <Route path="/recent" element={<Activity />} />
             <Route path="/exerciseDashboard" element={<ExerciseDashboard />} />
             <Route path="/trainerProfile" element={<TrainerProfile />} />
-            
             <Route path="/trainerRequest" element={<TrainersPage />} />
-            <Route path="/adminNav" element={<AdminNavbar />} />      
-            
+            <Route path="/adminNav" element={<AdminNavbar />} />
           </Routes>
         </NotificationProvider>
       </BrowserRouter>

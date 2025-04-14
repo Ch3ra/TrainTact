@@ -1,6 +1,4 @@
-import { io } from "socket.io-client"
-
-const SOCKET_URL = "http://localhost:3000"
+import io from "socket.io-client"
 
 class SocketService {
   constructor() {
@@ -15,16 +13,46 @@ class SocketService {
     this.signalTimeouts = new Map() // Track timeouts for signals
   }
 
-  // ==================== Notification Methods ====================
-  onNewNotification(callback) {
-    this._addNotificationListener("newNotification", callback)
-    // Also listen for the alternative event name
-    this._addNotificationListener("getNotification", callback)
+  connect(userId) {
+    if (!this.socket) {
+      this.socket = io("http://localhost:3000", {
+        query: { userId },
+      })
+
+      this.userId = userId
+
+      this.socket.on("connect", () => {
+        console.log("Socket connected")
+        this.socket.emit("addUser", userId)
+      })
+
+      this.socket.on("connect_error", (error) => {
+        console.error("Socket connection error:", error)
+      })
+    }
+
+    return this.socket
   }
 
-  sendNotification(data) {
-    if (!this.socket) return
-    this.socket.emit("sendNotification", data)
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect()
+      this.socket = null
+      this.userId = null
+    }
+  }
+
+  onNewNotification(callback) {
+    if (this.socket) {
+      this.socket.on("newNotification", callback)
+      this.socket.on("getNotification", callback) // For backward compatibility
+    }
+  }
+
+  removeNotificationListener(event) {
+    if (this.socket) {
+      this.socket.off(event)
+    }
   }
 
   // ==================== Video Call Methods ====================
@@ -216,49 +244,6 @@ class SocketService {
     })
   }
 
-  connect(userId) {
-    if (!this.socket) {
-      console.log(`Connecting socket for user: ${userId}`)
-      this.socket = io(SOCKET_URL, {
-        autoConnect: true,
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 3000,
-        query: { userId },
-        transports: ["websocket"],
-      })
-
-      this.userId = userId
-
-      // Core connection events
-      this.socket.on("connect", () => {
-        console.log("Socket connected, socket ID:", this.socket.id)
-        this.socket.emit("addUser", userId)
-      })
-
-      this.socket.on("disconnect", (reason) => {
-        console.log("Socket disconnected:", reason)
-      })
-
-      this.socket.on("connect_error", (err) => {
-        console.error("Connection error:", err.message)
-      })
-
-      // Add reconnection handling
-      this.handleReconnection()
-    }
-    return this.socket
-  }
-
-  disconnect() {
-    if (this.socket) {
-      this.socket.removeAllListeners()
-      this.socket.disconnect()
-      this.socket = null
-      this.userId = null
-    }
-  }
-
   // ==================== Message Handling ====================
   sendMessage(messageData) {
     if (!this.socket) return
@@ -395,6 +380,5 @@ class SocketService {
   }
 }
 
-// Singleton instance
 const socketService = new SocketService()
 export default socketService

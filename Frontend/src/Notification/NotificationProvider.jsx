@@ -231,7 +231,7 @@ const NotificationProvider = ({ children }) => {
     markAllAsRead,
     deleteNotification,
     clearAllNotifications,
-    fetchNotifications,
+    fetchNotifications
   }
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>

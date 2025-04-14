@@ -124,6 +124,7 @@ const adminRoutes = require("./routes/adminRoute");
 const trainerDashboardRoutes = require("./routes/trainerDashboardRoute"); 
 const { initStatusUpdateJob } = require("./controller/availabilityController/availabilityController")
 
+
 // Test API to check if server is live or not
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -146,9 +147,10 @@ app.use("/api/chat", chatRoutes)
 app.use("/api/video-call", require("./routes/videoCallRoute"))
 app.use("/api/notifications", notificationRoutes)
 app.use("/api/admin", adminRoutes);
-app.use("/api/trainer-dashboard", trainerDashboardRoutes); // New route registration
+app.use("/api/trainer-dashboard", trainerDashboardRoutes);
 app.use("/api/exercises", exerciseRoutes);
 app.use("/api/ratings", ratingRoutes);
+
 
 // Database connection
 const { connectDatabase } = require("./database/database")
