@@ -132,6 +132,10 @@ class SocketService {
     })
   }
 
+  handleCallDeclineBroadcast(callback) {
+    this._addVideoListener("broadcastCallDeclined", callback)
+  }
+
   handleCallEnded(callback) {
     this._addVideoListener("callEnded", callback)
   }

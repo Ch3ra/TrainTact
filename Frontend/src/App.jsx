@@ -60,6 +60,8 @@ import TopRatedTrainer from "./UserPage/TopRatedTrainer"
 import ClientProfile from "./UserPage/ClientProfile"
 import TrainerDescription from "./UserPage/TrainerDescription"
 import ExerciseDetail from "./UserPage/ExerciseDetails"
+import RecommendationForm from "./components/RecommendationForm"
+import WorkoutForm from "./components/ExerciseRecommedation"
 
 function App() {
   return (
@@ -118,6 +120,8 @@ function App() {
             <Route path="/clientProfile" element={<ClientProfile/>} />
             <Route path="/trainerDescription" element={<TrainerDescription/>} />
             <Route path="/exercises/:id" element={<ExerciseDetail/>} />
+            <Route path="/trainerRecommendation" element={<RecommendationForm/>} />
+            <Route path="/exerciseRecommendation" element={<WorkoutForm/>} />
 
             {/* Admin Pannel Paths */}
             <Route path="/admin" element={<DashboardPage />} />

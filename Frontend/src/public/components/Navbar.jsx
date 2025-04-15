@@ -82,8 +82,8 @@ const Navbar = () => {
         { name: "Home", path: "/home" },
         { name: "Find Trainer's", path: "/trainerExplore" },
         { name: "Find Exercise's", path: "/exercise" },
-        { name: "Recommend Trainer's", path: "/recommendTrainers" },
-        { name: "Recommend Exercise", path: "/recommendExercise" },
+        { name: "Recommend Trainer's", path: "/trainerRecommendation" },
+        { name: "Recommend Exercise", path: "/exerciseRecommendation" },
       ]
     : [
         { name: "Home", path: "/" },
